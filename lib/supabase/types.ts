@@ -1,0 +1,98 @@
+// Auto-generate the real version with: npx supabase gen types typescript --project-id YOUR_PROJECT_ID
+// This stub lets TypeScript compile until you run the generator.
+
+export type Json = string | number | boolean | null | { [key: string]: Json } | Json[]
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string
+          email: string | null
+          username: string
+          avatar_url: string | null
+          is_premium: boolean
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'created_at'>
+        Update: Partial<Database['public']['Tables']['profiles']['Insert']>
+      }
+      games: {
+        Row: {
+          id: string
+          external_id: string
+          sport: 'nba' | 'nfl' | 'mlb'
+          home_team: string
+          away_team: string
+          starts_at: string
+          status: 'scheduled' | 'live' | 'finished'
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['games']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['public']['Tables']['games']['Insert']>
+      }
+      questions: {
+        Row: {
+          id: string
+          game_id: string
+          sport: string
+          question_type: 'player_prop' | 'game_line' | 'over_under'
+          question_text: string
+          options: { label: string }[]
+          closes_at: string
+          status: 'open' | 'closed' | 'resolved'
+          correct_option: number | null
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['questions']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['public']['Tables']['questions']['Insert']>
+      }
+      picks: {
+        Row: {
+          id: string
+          user_id: string
+          question_id: string
+          option_index: number
+          community_pct_at_vote: number | null
+          picked_at: string
+          result: 'pending' | 'win' | 'loss'
+        }
+        Insert: Omit<Database['public']['Tables']['picks']['Row'], 'id' | 'picked_at'>
+        Update: Partial<Database['public']['Tables']['picks']['Insert']>
+      }
+      consensus: {
+        Row: {
+          question_id: string
+          option_index: number
+          vote_count: number
+          pct: number
+          updated_at: string
+        }
+        Insert: Database['public']['Tables']['consensus']['Row']
+        Update: Partial<Database['public']['Tables']['consensus']['Row']>
+      }
+      user_stats: {
+        Row: {
+          user_id: string
+          total_picks: number
+          correct_picks: number
+          accuracy_pct: number
+          vs_community_pct: number
+          current_streak: number
+          longest_streak: number
+          sport_breakdown: Record<string, { total: number; correct: number }>
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['user_stats']['Row'], 'updated_at'>
+        Update: Partial<Database['public']['Tables']['user_stats']['Insert']>
+      }
+    }
+    Functions: {
+      cast_vote: {
+        Args: { p_question_id: string; p_option_index: number }
+        Returns: Array<{ option_index: number; vote_count: number; pct: number }>
+      }
+    }
+  }
+}
