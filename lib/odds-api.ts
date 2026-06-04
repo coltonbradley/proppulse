@@ -19,7 +19,15 @@ type OddsApiMarket = {
   outcomes: { name: string; price: number; point?: number }[]
 }
 
-export async function fetchGames(sport: 'basketball_nba' | 'americanfootball_nfl' | 'baseball_mlb') {
+export type OddsApiSportKey =
+  | 'basketball_nba'
+  | 'americanfootball_nfl'
+  | 'baseball_mlb'
+  | 'icehockey_nhl'
+  | 'soccer_epl'
+  | 'soccer_usa_mls'
+
+export async function fetchGames(sport: OddsApiSportKey) {
   const res = await fetch(
     `${BASE_URL}/sports/${sport}/odds?apiKey=${process.env.ODDS_API_KEY}&regions=us&markets=h2h,spreads,totals`,
     { next: { revalidate: 300 } }
@@ -28,12 +36,17 @@ export async function fetchGames(sport: 'basketball_nba' | 'americanfootball_nfl
   return res.json() as Promise<OddsApiGame[]>
 }
 
-export async function fetchPlayerProps(
-  sport: 'basketball_nba' | 'americanfootball_nfl',
-  eventId: string
-) {
+const PLAYER_PROP_MARKETS: Partial<Record<OddsApiSportKey, string>> = {
+  basketball_nba: 'player_points,player_rebounds,player_assists',
+  americanfootball_nfl: 'player_pass_tds,player_rush_yds,player_rec_yds',
+  icehockey_nhl: 'player_goals,player_assists,player_shots_on_goal',
+}
+
+export async function fetchPlayerProps(sport: OddsApiSportKey, eventId: string) {
+  const markets = PLAYER_PROP_MARKETS[sport]
+  if (!markets) return null
   const res = await fetch(
-    `${BASE_URL}/sports/${sport}/events/${eventId}/odds?apiKey=${process.env.ODDS_API_KEY}&regions=us&markets=player_points,player_rebounds,player_assists,player_pass_tds,player_rush_yds,player_rec_yds`,
+    `${BASE_URL}/sports/${sport}/events/${eventId}/odds?apiKey=${process.env.ODDS_API_KEY}&regions=us&markets=${markets}`,
     { next: { revalidate: 300 } }
   )
   if (!res.ok) throw new Error(`Odds API error: ${res.status}`)

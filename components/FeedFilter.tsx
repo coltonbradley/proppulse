@@ -7,6 +7,8 @@ const SPORTS = [
   { key: 'nba', label: 'NBA' },
   { key: 'nfl', label: 'NFL' },
   { key: 'mlb', label: 'MLB' },
+  { key: 'nhl', label: 'NHL' },
+  { key: 'soccer', label: 'Soccer' },
 ]
 
 const TYPES = [

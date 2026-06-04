@@ -180,13 +180,16 @@ async function runResolver() {
   const supabase = getServiceClient()
   const results = { resolved: 0, skipped: 0, errors: 0 }
 
-  // Fetch scores for NBA and NFL
-  const [nbaScores, nflScores] = await Promise.all([
+  // Fetch scores for all supported sports
+  const [nbaScores, nflScores, nhlScores, eplScores, mlsScores] = await Promise.all([
     fetchScores('basketball_nba'),
     fetchScores('americanfootball_nfl'),
+    fetchScores('icehockey_nhl'),
+    fetchScores('soccer_epl'),
+    fetchScores('soccer_usa_mls'),
   ])
 
-  const completedGames = [...nbaScores, ...nflScores].filter(
+  const completedGames = [...nbaScores, ...nflScores, ...nhlScores, ...eplScores, ...mlsScores].filter(
     (g) => g.completed && g.scores
   )
 

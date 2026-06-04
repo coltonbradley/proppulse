@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { fetchGames, fetchPlayerProps, type OddsApiGame } from '@/lib/odds-api'
+import { fetchGames, fetchPlayerProps, type OddsApiGame, type OddsApiSportKey } from '@/lib/odds-api'
 
 function getServiceClient() {
   return createClient(
@@ -9,12 +9,14 @@ function getServiceClient() {
   )
 }
 
-const SPORT_MAP = {
+const SPORT_MAP: Record<OddsApiSportKey, string> = {
   basketball_nba: 'nba',
   americanfootball_nfl: 'nfl',
-} as const
-
-type OddsApiSport = keyof typeof SPORT_MAP
+  baseball_mlb: 'mlb',
+  icehockey_nhl: 'nhl',
+  soccer_epl: 'soccer',
+  soccer_usa_mls: 'soccer',
+}
 
 type Outcome = { name: string; price: number; point?: number }
 
@@ -86,7 +88,7 @@ async function seedGameLines(
 
 async function seedPlayerProps(
   supabase: ReturnType<typeof getServiceClient>,
-  apiSport: OddsApiSport,
+  apiSport: OddsApiSportKey,
   game: OddsApiGame,
   gameRowId: string,
   sport: string
@@ -134,7 +136,7 @@ export async function POST() {
   const supabase = getServiceClient()
   const results = { games: 0, questions: 0 }
 
-  for (const apiSport of Object.keys(SPORT_MAP) as OddsApiSport[]) {
+  for (const apiSport of Object.keys(SPORT_MAP) as OddsApiSportKey[]) {
     const sport = SPORT_MAP[apiSport]
     const games = await fetchGames(apiSport)
 
