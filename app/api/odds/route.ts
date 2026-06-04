@@ -18,7 +18,7 @@ const SPORT_MAP: Record<OddsApiSportKey, string> = {
   soccer_usa_mls: 'soccer',
 }
 
-type Outcome = { name: string; price: number; point?: number }
+type Outcome = { name: string; price: number; point?: number; description?: string }
 
 async function seedGameLines(
   supabase: ReturnType<typeof getServiceClient>,
@@ -102,29 +102,39 @@ async function seedPlayerProps(
     for (const market of bookmaker.markets ?? []) {
       if (!market.key.startsWith('player_')) continue
       const outcomes: Outcome[] = market.outcomes
-      if (outcomes.length < 2) continue
+      const statLabel = market.key.replace('player_', '').replace(/_/g, ' ')
 
-      const over = outcomes.find((o) => o.name === 'Over') ?? outcomes[0]
-      const under = outcomes.find((o) => o.name === 'Under') ?? outcomes[1]
-      const label = market.key.replace('player_', '').replace(/_/g, ' ')
-      const questionText = `${label} — over or under ${over.point}?`
+      // Group outcomes by player name (stored in the description field)
+      const byPlayer = new Map<string, { over: Outcome | null; under: Outcome | null }>()
+      for (const outcome of outcomes) {
+        const player = outcome.description ?? 'Unknown'
+        if (!byPlayer.has(player)) byPlayer.set(player, { over: null, under: null })
+        const entry = byPlayer.get(player)!
+        if (outcome.name === 'Over') entry.over = outcome
+        if (outcome.name === 'Under') entry.under = outcome
+      }
 
-      const { error } = await supabase.from('questions').upsert(
-        {
-          game_id: gameRowId,
-          sport,
-          question_type: 'player_prop',
-          question_text: questionText,
-          options: [
-            { label: `Over ${over.point}` },
-            { label: `Under ${under.point ?? over.point}` },
-          ],
-          closes_at: game.commence_time,
-          status: 'open',
-        },
-        { onConflict: 'game_id,question_type,question_text' }
-      )
-      if (!error) count++
+      for (const [player, { over, under }] of byPlayer) {
+        if (!over || !under || over.point == null) continue
+        const questionText = `${player} ${statLabel} — over or under ${over.point}?`
+
+        const { error } = await supabase.from('questions').upsert(
+          {
+            game_id: gameRowId,
+            sport,
+            question_type: 'player_prop',
+            question_text: questionText,
+            options: [
+              { label: `Over ${over.point}` },
+              { label: `Under ${under.point ?? over.point}` },
+            ],
+            closes_at: game.commence_time,
+            status: 'open',
+          },
+          { onConflict: 'game_id,question_type,question_text' }
+        )
+        if (!error) count++
+      }
     }
   } catch {
     // Player props endpoint may 404 on free tier or for games without markets
@@ -132,11 +142,19 @@ async function seedPlayerProps(
   return count
 }
 
-export async function POST() {
+export async function POST(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const sportFilter = searchParams.get('sport') as OddsApiSportKey | null
+  const propsOnly = searchParams.get('props_only') === 'true'
+
   const supabase = getServiceClient()
   const results = { games: 0, questions: 0 }
 
-  for (const apiSport of Object.keys(SPORT_MAP) as OddsApiSportKey[]) {
+  const sports = sportFilter
+    ? [sportFilter]
+    : (Object.keys(SPORT_MAP) as OddsApiSportKey[])
+
+  for (const apiSport of sports) {
     const sport = SPORT_MAP[apiSport]
     const games = await fetchGames(apiSport)
 
@@ -160,7 +178,7 @@ export async function POST() {
       if (gameErr || !gameRow) continue
       results.games++
 
-      results.questions += await seedGameLines(supabase, game, gameRow.id, sport)
+      if (!propsOnly) results.questions += await seedGameLines(supabase, game, gameRow.id, sport)
       results.questions += await seedPlayerProps(supabase, apiSport, game, gameRow.id, sport)
     }
   }
