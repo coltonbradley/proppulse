@@ -29,8 +29,8 @@ export type OddsApiSportKey =
 
 export async function fetchGames(sport: OddsApiSportKey) {
   const res = await fetch(
-    `${BASE_URL}/sports/${sport}/odds?apiKey=${process.env.ODDS_API_KEY}&regions=us&markets=h2h,spreads,totals`,
-    { next: { revalidate: 300 } }
+    `${BASE_URL}/sports/${sport}/odds?apiKey=${process.env.ODDS_API_KEY}&regions=us,ca&markets=h2h,spreads,totals`,
+    { cache: 'no-store' }
   )
   if (!res.ok) throw new Error(`Odds API error: ${res.status}`)
   return res.json() as Promise<OddsApiGame[]>
