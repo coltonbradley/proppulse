@@ -115,6 +115,7 @@ async function seedPlayerProps(
             game_id: gameRowId,
             sport,
             question_type: 'player_prop',
+            stat: statLabel,
             question_text: questionText,
             options: [
               { label: `Over ${over.point}` },

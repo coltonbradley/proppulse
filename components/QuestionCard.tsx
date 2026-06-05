@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getStatConfig, STAT_PILL_DEFAULT } from '@/lib/stat-config'
 
 type ConsensusRow = { option_index: number; vote_count: number; pct: number }
 
@@ -11,6 +12,7 @@ type Question = {
   id: string
   question_text: string
   question_type: string
+  stat: string | null
   options: { label: string }[]
   closes_at: string
   status: string
@@ -78,6 +80,11 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
 
   const { playerName, statLabel, line } = parsePlayerProp(question.question_text, question.options)
   const gameInfo = question.games ? formatGameInfo(question.games) : null
+  const statCfg = getStatConfig(question.stat)
+  const pillLabel = statCfg?.label ?? (question.stat
+    ? question.stat.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    : 'Prop')
+  const pillStyle = statCfg?.pill ?? STAT_PILL_DEFAULT
 
   function handleVote(optionIndex: number) {
     if (hasVoted || !isOpen || isPending) return
@@ -124,10 +131,10 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
       id={`q-${question.id}`}
       className="bg-gray-900 border border-gray-800 rounded-2xl p-3 flex flex-col gap-3 transition-shadow duration-300"
     >
-      {/* Badges */}
+      {/* Stat pill + sharp badge */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold text-[#D85A30] bg-[#D85A30]/10 px-2 py-0.5 rounded-full uppercase tracking-wide">
-          Prop
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${pillStyle}`}>
+          {pillLabel}
         </span>
         {isSharp && (
           <span className="text-[10px] font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded-full">

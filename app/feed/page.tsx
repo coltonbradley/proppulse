@@ -16,6 +16,7 @@ type QuestionRow = {
   status: string
   correct_option: number | null
   sport: string
+  stat: string | null
   games: { home_team: string; away_team: string; starts_at: string } | null
   consensus: ConsensusRow[]
 }
@@ -28,11 +29,11 @@ export type TrendingQuestion = {
 }
 
 type Props = {
-  searchParams: Promise<{ sport?: string; type?: string }>
+  searchParams: Promise<{ sport?: string; type?: string; stat?: string }>
 }
 
 export default async function FeedPage({ searchParams }: Props) {
-  const { sport, type } = await searchParams
+  const { sport, type, stat } = await searchParams
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -50,6 +51,7 @@ export default async function FeedPage({ searchParams }: Props) {
       status,
       correct_option,
       sport,
+      stat,
       games!inner(home_team, away_team, starts_at),
       consensus(option_index, vote_count, pct)
     `)
@@ -60,6 +62,7 @@ export default async function FeedPage({ searchParams }: Props) {
   if (sport && sport !== 'all') query = query.eq('sport', sport)
   if (type && type !== 'all') query = query.eq('question_type', type)
   else query = query.eq('question_type', 'player_prop')
+  if (stat && stat !== 'all') query = query.eq('stat', stat)
 
   // Trending: consensus rows updated in the last hour
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
@@ -68,10 +71,24 @@ export default async function FeedPage({ searchParams }: Props) {
     .select('question_id, vote_count')
     .gt('updated_at', oneHourAgo)
 
-  const [{ data: rawQuestions }, { data: recentConsensus }] = await Promise.all([
+  // Available stat categories for the filter pills
+  const statsQuery = supabase
+    .from('questions')
+    .select('stat')
+    .eq('status', 'open')
+    .eq('question_type', 'player_prop')
+    .gt('closes_at', new Date().toISOString())
+    .not('stat', 'is', null)
+
+  const [{ data: rawQuestions }, { data: recentConsensus }, { data: statRows }] = await Promise.all([
     query,
     trendingQuery,
+    statsQuery,
   ])
+
+  const availableStats = [...new Set(
+    (statRows ?? []).map((r: { stat: string | null }) => r.stat).filter(Boolean)
+  )] as string[]
 
   const questions = (rawQuestions ?? []) as unknown as QuestionRow[]
 
@@ -141,11 +158,11 @@ export default async function FeedPage({ searchParams }: Props) {
         {trending.length > 0 && <TrendingRail items={trending} />}
 
         <Suspense>
-          <FeedFilter />
+          <FeedFilter availableStats={availableStats} />
         </Suspense>
 
         <FeedClient
-          key={`${sport ?? 'all'}-${type ?? 'all'}`}
+          key={`${sport ?? 'all'}-${type ?? 'all'}-${stat ?? 'all'}`}
           initialQuestions={questionsWithPicks}
           userId={user?.id ?? null}
         />

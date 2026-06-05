@@ -13,6 +13,7 @@ type Question = {
   game_id: string
   question_text: string
   question_type: string
+  stat: string | null
   options: { label: string }[]
   closes_at: string
   status: string
