@@ -45,7 +45,7 @@ async function seedGameLines(
           closes_at: game.commence_time,
           status: 'open',
         },
-        { onConflict: 'game_id,question_type,question_text' }
+        { onConflict: 'game_id,question_type,question_text', ignoreDuplicates: true }
       )
       if (!error) count++
     }
@@ -70,7 +70,7 @@ async function seedGameLines(
           closes_at: game.commence_time,
           status: 'open',
         },
-        { onConflict: 'game_id,question_type,question_text' }
+        { onConflict: 'game_id,question_type,question_text', ignoreDuplicates: true }
       )
       if (!error) count++
     }
@@ -124,7 +124,7 @@ async function seedPlayerProps(
             closes_at: game.commence_time,
             status: 'open',
           },
-          { onConflict: 'game_id,question_type,question_text' }
+          { onConflict: 'game_id,question_type,question_text', ignoreDuplicates: true }
         )
         if (!error) count++
       }
