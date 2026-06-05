@@ -156,7 +156,10 @@ async function seedPlayerProps(
 
 export async function POST(req: Request) {
   const secret = req.headers.get('x-cron-secret')
-  if (secret !== process.env.CRON_SECRET) {
+  const bearer = req.headers.get('authorization')
+  const validCron = secret === process.env.CRON_SECRET
+  const validBearer = bearer === `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+  if (!validCron && !validBearer) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
