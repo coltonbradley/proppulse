@@ -16,6 +16,7 @@ const SPORT_MAP: Record<OddsApiSportKey, string> = {
   icehockey_nhl: 'nhl',
   soccer_epl: 'soccer',
   soccer_usa_mls: 'soccer',
+  soccer_fifa_world_cup: 'soccer',
 }
 
 type Outcome = { name: string; price: number; point?: number; description?: string }
