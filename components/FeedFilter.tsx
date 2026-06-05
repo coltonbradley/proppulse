@@ -14,8 +14,6 @@ const SPORTS = [
 const TYPES = [
   { key: 'all', label: 'All' },
   { key: 'player_prop', label: 'Props' },
-  { key: 'game_line', label: 'Lines' },
-  { key: 'over_under', label: 'O/U' },
 ]
 
 export default function FeedFilter() {
