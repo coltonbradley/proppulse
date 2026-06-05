@@ -50,11 +50,10 @@ function saveAnonPick(questionId: string, optionIndex: number) {
 }
 
 function formatGameTime(startsAt: string) {
-  return new Date(startsAt).toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  })
+  const d = new Date(startsAt)
+  const datePart = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+  return `${datePart} · ${timePart}`
 }
 
 export default function FeedClient({ initialQuestions, userId }: Props) {
