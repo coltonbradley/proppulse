@@ -136,6 +136,11 @@ async function seedPlayerProps(
 }
 
 export async function POST(req: Request) {
+  const secret = req.headers.get('x-cron-secret')
+  if (secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { searchParams } = new URL(req.url)
   const sportFilter = searchParams.get('sport')
   const propsOnly = searchParams.get('props_only') === 'true'
