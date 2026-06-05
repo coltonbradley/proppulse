@@ -185,20 +185,22 @@ export default function FeedClient({ initialQuestions, userId }: Props) {
     )
   }
 
-  // When a type filter is active, render flat (grouping by game isn't useful for single-type view)
+  // When a type filter is active, render flat 2-col grid
   if (typeFilter !== 'all') {
     return (
       <div className="space-y-3">
         {searchBar}
-        {filtered.map((q) => (
-          <QuestionCard
-            key={q.id}
-            question={q}
-            userId={userId}
-            anonPick={anonPicks[q.id] ?? null}
-            onAnonVote={handleAnonVote}
-          />
-        ))}
+        <div className="grid grid-cols-2 gap-2">
+          {filtered.map((q) => (
+            <QuestionCard
+              key={q.id}
+              question={q}
+              userId={userId}
+              anonPick={anonPicks[q.id] ?? null}
+              onAnonVote={handleAnonVote}
+            />
+          ))}
+        </div>
       </div>
     )
   }
@@ -245,7 +247,7 @@ export default function FeedClient({ initialQuestions, userId }: Props) {
                 </span>
               </div>
             )}
-            <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
               {gameQuestions.map((q) => (
                 <QuestionCard
                   key={q.id}
