@@ -222,5 +222,15 @@ export async function GET() {
     const key = `${row.sport}/${row.question_type}/${row.status}`
     upcomingCounts[key] = (upcomingCounts[key] ?? 0) + 1
   }
-  return NextResponse.json({ all: allCounts, upcoming: upcomingCounts, matchWinnerSample: sample })
+  // Test exact feed query for soccer match_winner
+  const { data: feedTest, error: feedErr } = await supabase
+    .from('questions')
+    .select('id, question_text, games!inner(home_team, away_team)')
+    .eq('status', 'open')
+    .gt('closes_at', now)
+    .in('question_type', ['player_prop', 'match_winner'])
+    .eq('sport', 'soccer')
+    .limit(3)
+
+  return NextResponse.json({ all: allCounts, upcoming: upcomingCounts, matchWinnerSample: sample, feedTest, feedErr })
 }
