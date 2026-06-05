@@ -207,13 +207,20 @@ export async function POST(req: Request) {
 
 export async function GET() {
   const supabase = getServiceClient()
-  const { data } = await supabase
-    .from('questions')
-    .select('sport, question_type, status')
-  const counts: Record<string, number> = {}
-  for (const row of data ?? []) {
+  const now = new Date().toISOString()
+  const { data: all } = await supabase.from('questions').select('sport, question_type, status')
+  const { data: upcoming } = await supabase.from('questions').select('sport, question_type, status, closes_at').gt('closes_at', now)
+  const { data: sample } = await supabase.from('questions').select('question_text, closes_at, status').eq('question_type', 'match_winner').limit(3)
+
+  const allCounts: Record<string, number> = {}
+  for (const row of all ?? []) {
     const key = `${row.sport}/${row.question_type}/${row.status}`
-    counts[key] = (counts[key] ?? 0) + 1
+    allCounts[key] = (allCounts[key] ?? 0) + 1
   }
-  return NextResponse.json(counts)
+  const upcomingCounts: Record<string, number> = {}
+  for (const row of upcoming ?? []) {
+    const key = `${row.sport}/${row.question_type}/${row.status}`
+    upcomingCounts[key] = (upcomingCounts[key] ?? 0) + 1
+  }
+  return NextResponse.json({ all: allCounts, upcoming: upcomingCounts, matchWinnerSample: sample })
 }
