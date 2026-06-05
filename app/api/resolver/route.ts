@@ -37,6 +37,27 @@ function resolveOverUnder(
   return total > line ? 0 : 1   // 0 = Over, 1 = Under
 }
 
+function resolveMatchWinner(
+  options: { label: string }[],
+  homeTeam: string,
+  awayTeam: string,
+  homeScore: number,
+  awayScore: number
+): number | null {
+  const winnerName =
+    homeScore > awayScore ? homeTeam :
+    awayScore > homeScore ? awayTeam :
+    'Draw'
+
+  // Exact match first, then last-word fuzzy match for team name variations
+  let idx = options.findIndex((o) => o.label === winnerName)
+  if (idx === -1 && winnerName !== 'Draw') {
+    const lastWord = winnerName.split(' ').pop() ?? ''
+    idx = options.findIndex((o) => o.label.includes(lastWord))
+  }
+  return idx >= 0 ? idx : null
+}
+
 function resolveGameLine(
   options: { label: string }[],
   homeTeam: string,
@@ -201,7 +222,7 @@ async function runResolver() {
     `)
     .in('status', ['open', 'closed'])
     .is('correct_option', null)
-    .in('question_type', ['over_under', 'game_line'])
+    .in('question_type', ['over_under', 'game_line', 'match_winner'])
 
   if (!questions?.length) return NextResponse.json({ ...results })
 
@@ -229,12 +250,9 @@ async function runResolver() {
     if (question.question_type === 'over_under') {
       correctOption = resolveOverUnder(question.options, homeScore, awayScore)
     } else if (question.question_type === 'game_line') {
-      correctOption = resolveGameLine(
-        question.options,
-        game.home_team,
-        homeScore,
-        awayScore
-      )
+      correctOption = resolveGameLine(question.options, game.home_team, homeScore, awayScore)
+    } else if (question.question_type === 'match_winner') {
+      correctOption = resolveMatchWinner(question.options, game.home_team, game.away_team, homeScore, awayScore)
     }
 
     if (correctOption === null) { results.skipped++; continue }

@@ -61,7 +61,7 @@ export default async function FeedPage({ searchParams }: Props) {
 
   if (sport && sport !== 'all') query = query.eq('sport', sport)
   if (type && type !== 'all') query = query.eq('question_type', type)
-  else query = query.eq('question_type', 'player_prop')
+  else query = query.in('question_type', ['player_prop', 'match_winner'])
   if (stat && stat !== 'all') query = query.eq('stat', stat)
 
   // Trending: consensus rows updated in the last hour

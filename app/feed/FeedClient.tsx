@@ -35,9 +35,10 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 const TYPE_ORDER: Record<string, number> = {
-  game_line: 0,
-  over_under: 1,
-  player_prop: 2,
+  match_winner: 0,
+  game_line: 1,
+  over_under: 2,
+  player_prop: 3,
 }
 
 function readAnonPicks(): Record<string, number> {
