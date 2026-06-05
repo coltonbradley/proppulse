@@ -94,7 +94,6 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
     player_prop: 'PROP',
     game_line: 'LINE',
     over_under: 'O/U',
-    match_winner: 'WINNER',
   }
 
   return (
