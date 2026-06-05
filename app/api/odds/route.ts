@@ -1,22 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { fetchGames, fetchPlayerProps, type OddsApiGame, type OddsApiSportKey } from '@/lib/odds-api'
+import { fetchGames, fetchPlayerProps, type OddsApiGame } from '@/lib/odds-api'
+import { ALL_ODDS_API_KEYS, ODDS_API_TO_SPORT } from '@/lib/sports.config'
 
 function getServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
-}
-
-const SPORT_MAP: Record<OddsApiSportKey, string> = {
-  basketball_nba: 'nba',
-  americanfootball_nfl: 'nfl',
-  baseball_mlb: 'mlb',
-  icehockey_nhl: 'nhl',
-  soccer_epl: 'soccer',
-  soccer_usa_mls: 'soccer',
-  soccer_fifa_world_cup: 'soccer',
 }
 
 type Outcome = { name: string; price: number; point?: number; description?: string }
@@ -145,18 +136,17 @@ async function seedPlayerProps(
 
 export async function POST(req: Request) {
   const { searchParams } = new URL(req.url)
-  const sportFilter = searchParams.get('sport') as OddsApiSportKey | null
+  const sportFilter = searchParams.get('sport')
   const propsOnly = searchParams.get('props_only') === 'true'
 
   const supabase = getServiceClient()
   const results = { games: 0, questions: 0 }
 
-  const sports = sportFilter
-    ? [sportFilter]
-    : (Object.keys(SPORT_MAP) as OddsApiSportKey[])
+  const apiKeys = sportFilter ? [sportFilter] : ALL_ODDS_API_KEYS
 
-  for (const apiSport of sports) {
-    const sport = SPORT_MAP[apiSport]
+  for (const apiSport of apiKeys) {
+    const sport = ODDS_API_TO_SPORT[apiSport]
+    if (!sport) continue
     const games = await fetchGames(apiSport)
 
     for (const game of games) {

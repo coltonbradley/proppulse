@@ -1,14 +1,11 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
+import { SPORTS_CONFIG } from '@/lib/sports.config'
 
 const SPORTS = [
   { key: 'all', label: 'All' },
-  { key: 'nba', label: 'NBA' },
-  { key: 'nfl', label: 'NFL' },
-  { key: 'mlb', label: 'MLB' },
-  { key: 'nhl', label: 'NHL' },
-  { key: 'soccer', label: 'Soccer' },
+  ...SPORTS_CONFIG.map((s) => ({ key: s.key, label: s.label })),
 ]
 
 const TYPES = [

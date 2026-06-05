@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { ALL_ODDS_API_KEYS } from '@/lib/sports.config'
 
 function getServiceClient() {
   return createClient(
@@ -180,18 +181,9 @@ async function runResolver() {
   const supabase = getServiceClient()
   const results = { resolved: 0, skipped: 0, errors: 0 }
 
-  // Fetch scores for all supported sports
-  const [nbaScores, nflScores, nhlScores, eplScores, mlsScores] = await Promise.all([
-    fetchScores('basketball_nba'),
-    fetchScores('americanfootball_nfl'),
-    fetchScores('icehockey_nhl'),
-    fetchScores('soccer_epl'),
-    fetchScores('soccer_usa_mls'),
-  ])
-
-  const completedGames = [...nbaScores, ...nflScores, ...nhlScores, ...eplScores, ...mlsScores].filter(
-    (g) => g.completed && g.scores
-  )
+  // Fetch scores for all sports defined in config
+  const allScores = await Promise.all(ALL_ODDS_API_KEYS.map((key) => fetchScores(key)))
+  const completedGames = allScores.flat().filter((g) => g.completed && g.scores)
 
   if (!completedGames.length) return NextResponse.json({ ...results })
 
