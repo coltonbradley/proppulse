@@ -204,3 +204,16 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, ...results })
 }
+
+export async function GET() {
+  const supabase = getServiceClient()
+  const { data } = await supabase
+    .from('questions')
+    .select('sport, question_type, status')
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    const key = `${row.sport}/${row.question_type}/${row.status}`
+    counts[key] = (counts[key] ?? 0) + 1
+  }
+  return NextResponse.json(counts)
+}
