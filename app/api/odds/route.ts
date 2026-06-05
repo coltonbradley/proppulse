@@ -35,6 +35,24 @@ async function seedGameLines(
     const outcomes: Outcome[] = market.outcomes
     if (outcomes.length < 2) continue
 
+    if (market.key === 'h2h' && outcomes.length >= 2) {
+      const questionText = `Who wins: ${game.away_team} @ ${game.home_team}?`
+      const options = outcomes.map((o) => ({ label: o.name }))
+      const { error } = await supabase.from('questions').upsert(
+        {
+          game_id: gameRowId,
+          sport,
+          question_type: 'match_winner',
+          question_text: questionText,
+          options,
+          closes_at: game.commence_time,
+          status: 'open',
+        },
+        { onConflict: 'game_id,question_type,question_text' }
+      )
+      if (!error) count++
+    }
+
     if (market.key === 'spreads') {
       const home = outcomes.find((o) => o.name === game.home_team) ?? outcomes[0]
       const away = outcomes.find((o) => o.name === game.away_team) ?? outcomes[1]
