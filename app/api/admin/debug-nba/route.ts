@@ -36,14 +36,25 @@ export async function GET(req: NextRequest) {
     if (line === 0 || isNaN(line)) zeroLineProps.push(row.question_text)
   }
 
+  const { data: userStats } = await supabase
+    .from('user_stats')
+    .select('user_id, total_picks, correct_picks, accuracy_pct, current_streak, profiles!inner(username)')
+    .gt('total_picks', 0)
+    .order('total_picks', { ascending: false })
+
+  const { data: pickSample } = await supabase
+    .from('picks')
+    .select('user_id, result, question_id')
+    .neq('result', 'pending')
+    .limit(20)
+
+  const resultCounts: Record<string, number> = {}
+  const { data: allPickResults } = await supabase.from('picks').select('result')
+  for (const p of allPickResults ?? []) resultCounts[(p as { result: string }).result] = (resultCounts[(p as { result: string }).result] ?? 0) + 1
+
   return NextResponse.json({
-    nhl_games: nbaGames,
-    stat_counts: statMap,
-    props: (allProps ?? []).map((p) => ({
-      text: p.question_text,
-      stat: p.stat,
-      closes_at: p.closes_at,
-      game_id: (p.game_id as string)?.slice(0, 8),
-    })),
+    user_stats: userStats,
+    pick_result_counts: resultCounts,
+    resolved_pick_sample: pickSample,
   })
 }
