@@ -73,7 +73,7 @@ export async function GET(
             <div style={{ width: '40px', height: '40px', background: '#D85A30', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ width: '20px', height: '3px', background: 'white', borderRadius: '2px' }} />
             </div>
-            <span style={{ fontSize: '28px', fontWeight: 800, color: '#D85A30' }}>PropPulse</span>
+            <span style={{ fontSize: '28px', fontWeight: 800, color: '#D85A30' }}>HerdPicks</span>
           </div>
           <div
             style={{
@@ -124,10 +124,10 @@ export async function GET(
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <span style={{ fontSize: '18px', color: '#6b7280' }}>@{username}</span>
             {beatCrowd && (
-              <span style={{ fontSize: '18px', color: '#facc15', fontWeight: 700 }}>Beat the crowd</span>
+              <span style={{ fontSize: '18px', color: '#facc15', fontWeight: 700 }}>Beat the herd</span>
             )}
           </div>
-          <span style={{ fontSize: '18px', color: '#374151' }}>proppulse-lovat.vercel.app</span>
+          <span style={{ fontSize: '18px', color: '#374151' }}>getherdpicks.com</span>
         </div>
       </div>
     ),

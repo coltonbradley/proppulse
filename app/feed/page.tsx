@@ -4,6 +4,7 @@ import FeedFilter from '@/components/FeedFilter'
 import TrendingRail from '@/components/TrendingRail'
 import BottomNav from '@/components/BottomNav'
 import FeedClient from './FeedClient'
+import HerdAccuracyChip from '@/components/HerdAccuracyChip'
 
 type ConsensusRow = { option_index: number; vote_count: number; pct: number }
 type QuestionRow = {
@@ -79,15 +80,23 @@ export default async function FeedPage({ searchParams }: Props) {
     .not('stat', 'is', null)
   if (sport && sport !== 'all') statsQuery = statsQuery.eq('sport', sport)
 
-  const [{ data: rawQuestions }, { data: recentConsensus }, { data: statRows }] = await Promise.all([
+  // Herd accuracy chip — auto-reveals at 100 resolved rows in the 70%+ bracket
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const herdQuery = (supabase as any).rpc('get_herd_accuracy', { p_min_pct: 70 })
+
+  const [{ data: rawQuestions }, { data: recentConsensus }, { data: statRows }, { data: herdRaw }] = await Promise.all([
     query,
     trendingQuery,
     statsQuery,
+    herdQuery,
   ])
 
   const availableStats = [...new Set(
     (statRows ?? []).map((r: { stat: string | null }) => r.stat).filter(Boolean)
   )] as string[]
+
+  type HerdRow = { total: number; correct: number; accuracy_pct: number }
+  const herdRow = ((herdRaw ?? []) as HerdRow[])[0] ?? { total: 0, accuracy_pct: 0 }
 
   const questions = (rawQuestions ?? []) as unknown as QuestionRow[]
 
@@ -144,7 +153,7 @@ export default async function FeedPage({ searchParams }: Props) {
     <div className="min-h-screen bg-[#0f0f0f]">
       <header className="sticky top-0 z-10 bg-[#0f0f0f]/95 backdrop-blur border-b border-gray-800 px-4 py-3">
         <div className="max-w-xl mx-auto flex items-center justify-between">
-          <span className="text-lg font-bold text-[#D85A30]">PropPulse</span>
+          <span className="text-lg font-bold text-[#D85A30]">HerdPicks</span>
           {!user && (
             <a href="/auth/login" className="text-sm text-[#D85A30] font-medium">Sign in</a>
           )}
@@ -157,6 +166,8 @@ export default async function FeedPage({ searchParams }: Props) {
         <Suspense>
           <FeedFilter availableStats={availableStats} />
         </Suspense>
+
+        <HerdAccuracyChip total={herdRow.total} accuracy={herdRow.accuracy_pct} />
 
         <FeedClient
           key={`${sport ?? 'all'}-${type ?? 'all'}-${stat ?? 'all'}`}

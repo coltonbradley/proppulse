@@ -11,7 +11,7 @@ type Props = {
 export default function ShareButtons({ shareUrl, result, chosenLabel }: Props) {
   const [copied, setCopied] = useState(false)
 
-  const text = `I went ${chosenLabel} on PropPulse and ${result === 'win' ? 'won' : 'lost'}. Vote on tonight's props 👇`
+  const text = `I went ${chosenLabel} on HerdPicks and ${result === 'win' ? 'won' : 'lost'}. Vote on tonight's props 👇`
 
   function copyLink() {
     navigator.clipboard.writeText(shareUrl)
@@ -26,7 +26,7 @@ export default function ShareButtons({ shareUrl, result, chosenLabel }: Props) {
 
   function nativeShare() {
     if (navigator.share) {
-      navigator.share({ title: 'PropPulse Pick', text, url: shareUrl })
+      navigator.share({ title: 'HerdPicks Pick', text, url: shareUrl })
     }
   }
 

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import QuestionCard from '@/components/QuestionCard'
 
-const ANON_PICKS_KEY = 'proppulse_anon_picks'
+const ANON_PICKS_KEY = 'herdpicks_anon_picks'
 
 type ConsensusRow = { option_index: number; vote_count: number; pct: number }
 type Question = {

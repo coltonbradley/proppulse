@@ -56,7 +56,7 @@ export default function Leaderboard({ entries, currentUserId, youRankOverride }:
                 )}
                 {entry.against_herd > 0 && (
                   <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-teal-900/50 text-teal-400">
-                    Beat crowd {entry.against_herd}x
+                    Beat herd {entry.against_herd}x
                   </span>
                 )}
               </div>

@@ -11,7 +11,7 @@ type PickRow = {
   option_index: number
   community_pct_at_vote: number | null
   picked_at: string
-  result: 'pending' | 'win' | 'loss'
+  result: 'pending' | 'win' | 'loss' | 'push'
   questions: {
     question_text: string
     options: { label: string }[]
@@ -78,7 +78,7 @@ export default async function ProfilePage() {
     <div className="min-h-screen bg-[#0f0f0f]">
       <header className="sticky top-0 z-10 bg-[#0f0f0f]/95 backdrop-blur border-b border-gray-800 px-4 py-3">
         <div className="max-w-xl mx-auto flex items-center justify-between">
-          <span className="text-lg font-bold text-[#D85A30]">PropPulse</span>
+          <span className="text-lg font-bold text-[#D85A30]">HerdPicks</span>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-400">{profile?.username}</span>
             <SignOutButton />

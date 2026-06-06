@@ -2,7 +2,7 @@ export default function AuthErrorPage() {
   return (
     <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6 text-center">
-        <h1 className="text-3xl font-bold text-[#D85A30]">PropPulse</h1>
+        <h1 className="text-3xl font-bold text-[#D85A30]">HerdPicks</h1>
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-3">
           <p className="text-white font-medium">Link expired or invalid</p>
           <p className="text-gray-400 text-sm">

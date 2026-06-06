@@ -13,11 +13,11 @@ type Props = { params: Promise<{ pickId: string }> }
 
 export async function generateMetadata({ params }: Props) {
   const { pickId } = await params
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://proppulse-lovat.vercel.app'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://getherdpicks.com'
   const imageUrl = `${appUrl}/api/share/${pickId}`
 
   return {
-    title: 'PropPulse — Pick Result',
+    title: 'HerdPicks — Pick Result',
     openGraph: {
       images: [{ url: imageUrl, width: 1200, height: 630 }],
     },
@@ -59,12 +59,12 @@ export default async function SharePage({ params }: Props) {
   const oppPct = 100 - crowdPct
   const isWin = pick.result === 'win'
   const beatCrowd = isWin && crowdPct < 50
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://proppulse-lovat.vercel.app'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://getherdpicks.com'
   const shareUrl = `${appUrl}/share/${pickId}`
 
   return (
     <div className="min-h-screen bg-[#0f0f0f] flex flex-col items-center justify-center px-4 py-12">
-      <a href="/feed" className="text-[#D85A30] font-bold text-xl mb-8">PropPulse</a>
+      <a href="/feed" className="text-[#D85A30] font-bold text-xl mb-8">HerdPicks</a>
 
       {/* Card */}
       <div className="w-full max-w-lg bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-5">
@@ -106,7 +106,7 @@ export default async function SharePage({ params }: Props) {
         </div>
 
         {beatCrowd && (
-          <p className="text-yellow-400 font-bold text-sm">Beat the crowd</p>
+          <p className="text-yellow-400 font-bold text-sm">Beat the herd</p>
         )}
       </div>
 

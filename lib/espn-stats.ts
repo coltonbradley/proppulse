@@ -9,9 +9,10 @@ const ESPN_CONFIGS: Record<string, EspnSportConfig> = {
 }
 
 // Maps our stat column values to ESPN boxscore key names.
-// Optional `group` restricts the match to a specific statistics group name
-// (e.g. 'pitching' vs 'batting' for MLB where the same key appears in both).
-type StatMapping = { statLabel: string; espnKey: string; group?: string }
+// Optional `group` restricts by statistics group name.
+// Optional `groupContainsKey` restricts by whether a specific key is present in
+// the group's keys array — used for MLB where ESPN returns null group names.
+type StatMapping = { statLabel: string; espnKey: string; group?: string; groupContainsKey?: string }
 
 const ESPN_STAT_KEYS: Record<string, StatMapping[]> = {
   nhl: [
@@ -28,11 +29,13 @@ const ESPN_STAT_KEYS: Record<string, StatMapping[]> = {
     { statLabel: 'blocks',    espnKey: 'blocks' },
   ],
   mlb: [
-    { statLabel: 'hits',               espnKey: 'hits',        group: 'batting' },
-    { statLabel: 'home runs',          espnKey: 'homeRuns',    group: 'batting' },
-    { statLabel: 'runs',               espnKey: 'runs',        group: 'batting' },
-    { statLabel: 'rbis',               espnKey: 'RBIs',        group: 'batting' },
-    { statLabel: 'pitcher strikeouts', espnKey: 'strikeouts',  group: 'pitching' },
+    // ESPN returns null group names for MLB — use groupContainsKey to identify batting vs pitching.
+    // Batting group contains 'atBats'; pitching group contains 'fullInnings.partInnings'.
+    { statLabel: 'hits',               espnKey: 'hits',       groupContainsKey: 'atBats' },
+    { statLabel: 'home runs',          espnKey: 'homeRuns',   groupContainsKey: 'atBats' },
+    { statLabel: 'runs',               espnKey: 'runs',       groupContainsKey: 'atBats' },
+    { statLabel: 'rbis',               espnKey: 'RBIs',       groupContainsKey: 'atBats' },
+    { statLabel: 'pitcher strikeouts', espnKey: 'strikeouts', groupContainsKey: 'fullInnings.partInnings' },
   ],
   nfl: [
     { statLabel: 'pass tds',  espnKey: 'passingTouchdowns' },
@@ -101,9 +104,18 @@ export function teamsMatch(a: string, b: string): boolean {
   return lastA.length > 2 && lastA === lastB
 }
 
-export function extractPlayerName(questionText: string): string {
+export function extractPlayerName(questionText: string, knownStat?: string | null): string {
   const clean = questionText.replace(/\?$/, '')
   const nameAndStat = clean.split(' — over or under ')[0] ?? clean
+
+  // If we know the stat label, strip it directly — handles uppercase combo stats
+  // like "Pts+Rebs+Asts" that the lowercase-detection fallback misses.
+  if (knownStat) {
+    const idx = nameAndStat.lastIndexOf(knownStat)
+    if (idx > 0) return nameAndStat.slice(0, idx).trim()
+  }
+
+  // Fallback: split on the first word that starts with a lowercase letter
   const words = nameAndStat.split(' ')
   let splitIdx = words.length
   for (let i = 1; i < words.length; i++) {
@@ -224,9 +236,9 @@ function parseBoxscoreStats(
         const playerName = ((athleteEntry.athlete as Record<string, unknown>)?.displayName as string) ?? ''
         const rawStats = (athleteEntry.stats as string[]) ?? []
 
-        for (const { statLabel, espnKey, group } of statMappings) {
-          // If a group filter is set, skip stats groups that don't match
+        for (const { statLabel, espnKey, group, groupContainsKey } of statMappings) {
           if (group && groupName !== group) continue
+          if (groupContainsKey && !keys.includes(groupContainsKey)) continue
 
           const idx = keys.indexOf(espnKey)
           if (idx === -1) continue
@@ -269,7 +281,7 @@ export function resolvePlayerProp(
   statLabel: string,
   line: number,
   playerStats: EspnPlayerStat[]
-): number | null {
+): number | null | 'push' {
   const norm = (s: string) => s.toLowerCase().trim()
   const targetName = norm(playerName)
   const targetLast = targetName.split(' ').pop() ?? ''
@@ -288,12 +300,12 @@ export function resolvePlayerProp(
       if (!match) return null
       total += match.value
     }
-    if (total === line) return null
+    if (total === line) return 'push'
     return total > line ? 0 : 1
   }
 
   const match = playerStats.find((s) => norm(s.statLabel) === targetStat && playerMatch(s))
   if (!match) return null
-  if (match.value === line) return null
+  if (match.value === line) return 'push'
   return match.value > line ? 0 : 1
 }

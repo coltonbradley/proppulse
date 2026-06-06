@@ -44,7 +44,7 @@ if (!process.env.CRON_SECRET) {
 const CRON_SECRET = process.env.CRON_SECRET
 const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? ''
 // Always target production — localhost is a dev-only value
-const APP_URL = (!rawAppUrl || rawAppUrl.includes('localhost')) ? 'https://proppulse-lovat.vercel.app' : rawAppUrl
+const APP_URL = (!rawAppUrl || rawAppUrl.includes('localhost')) ? 'https://getherdpicks.com' : rawAppUrl
 
 if (!CRON_SECRET) {
   console.error('ERROR: CRON_SECRET is not set. Add it to .env.local or the environment.')

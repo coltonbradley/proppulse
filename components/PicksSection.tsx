@@ -7,7 +7,7 @@ type PickRow = {
   option_index: number
   community_pct_at_vote: number | null
   picked_at: string
-  result: 'pending' | 'win' | 'loss'
+  result: 'pending' | 'win' | 'loss' | 'push'
   questions: {
     question_text: string
     options: { label: string }[]
@@ -18,6 +18,7 @@ type PickRow = {
 const resultColor: Record<string, string> = {
   win: 'text-green-400',
   loss: 'text-red-400',
+  push: 'text-blue-400',
   pending: 'text-gray-400',
 }
 
@@ -38,19 +39,22 @@ function PickCard({ pick }: { pick: PickRow }) {
             <span className="ml-1">· {pick.community_pct_at_vote}% with the Herd</span>
           )}
         </p>
-        {pick.result !== 'pending' && (
+        {pick.result !== 'pending' && pick.result !== 'push' && (
           <p className={`text-xs mt-1 font-medium ${
             beatCrowd ? 'text-yellow-400' : fadedCrowd ? 'text-gray-500' : 'text-gray-600'
           }`}>
             {beatCrowd ? 'Beat the Herd' : fadedCrowd ? 'Won with the Herd' : withCrowd ? 'Lost with the Herd' : 'Lost vs the Herd'}
           </p>
         )}
+        {pick.result === 'push' && (
+          <p className="text-xs mt-1 font-medium text-blue-400">Voided — exact line hit</p>
+        )}
       </div>
       <div className="flex flex-col items-end gap-1 shrink-0">
         <span className={`text-xs font-bold uppercase ${resultColor[pick.result]}`}>
           {pick.result}
         </span>
-        {pick.result !== 'pending' && (
+        {pick.result !== 'pending' && pick.result !== 'push' && (
           <a
             href={`/share/${pick.id}`}
             className="text-xs text-gray-600 hover:text-[#D85A30] transition-colors"

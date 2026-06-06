@@ -31,8 +31,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-[#D85A30]">PropPulse</h1>
-          <p className="text-gray-400 mt-1 text-sm">Vote on props. See what the crowd thinks.</p>
+          <h1 className="text-3xl font-bold text-[#D85A30]">HerdPicks</h1>
+          <p className="text-gray-400 mt-1 text-sm">Vote on props. See what the herd thinks.</p>
         </div>
 
         {sent ? (

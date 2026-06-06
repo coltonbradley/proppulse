@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import ConsensusBar from '@/components/ConsensusBar'
 
-const ANON_PICKS_KEY = 'proppulse_anon_picks'
+const ANON_PICKS_KEY = 'herdpicks_anon_picks'
 
 type ConsensusRow = { option_index: number; vote_count: number; pct: number }
 type Question = {
@@ -67,8 +67,8 @@ export default function LandingProp({ question }: { question: Question }) {
 
         {/* Brand */}
         <div className="text-center space-y-1">
-          <h1 className="text-3xl font-bold text-[#D85A30]">PropPulse</h1>
-          <p className="text-sm text-gray-500">Vote on props. See what the crowd thinks.</p>
+          <h1 className="text-3xl font-bold text-[#D85A30]">HerdPicks</h1>
+          <p className="text-sm text-gray-500">Vote on props. See what the herd thinks.</p>
         </div>
 
         {/* Card */}
@@ -116,7 +116,7 @@ export default function LandingProp({ question }: { question: Question }) {
               />
               {beatCrowd && (
                 <p className="text-yellow-400 text-sm font-bold">
-                  Contrarian pick — you went against the crowd
+                  Contrarian pick — you went against the herd
                 </p>
               )}
             </div>
