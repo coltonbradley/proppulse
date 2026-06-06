@@ -43,7 +43,21 @@ export async function GET(req: NextRequest) {
     statMap[s] = (statMap[s] ?? 0) + 1
   }
 
-  return NextResponse.json({ nba_games: nbaGames, bad_props: badProps, stat_counts: statMap })
+  // PP cache breakdown
+  const { data: ppCache } = await supabase
+    .from('pp_lines_cache')
+    .select('sport, player_name, stat_label, player_team_full')
+  const sportCounts: Record<string, number> = {}
+  const tourneyLines = []
+  const noTeam = []
+  for (const r of ppCache ?? []) {
+    sportCounts[r.sport] = (sportCounts[r.sport] ?? 0) + 1
+    if (r.sport === 'soccer_tournament') {
+      tourneyLines.push({ player: r.player_name, stat: r.stat_label, team: r.player_team_full })
+      if (!r.player_team_full) noTeam.push(r.player_name)
+    }
+  }
+  return NextResponse.json({ sport_counts: sportCounts, tournament_sample: tourneyLines.slice(0, 10), tournament_no_team: noTeam.slice(0, 5) })
 
   // Get a sample soccer game external_id from DB
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

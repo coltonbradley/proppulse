@@ -38,10 +38,17 @@ export const SPORTS_CONFIG: SportConfig[] = [
   },
   {
     key: 'soccer',
-    label: 'Soccer',
+    label: 'World Cup',
     oddsApiKeys: ['soccer_epl', 'soccer_usa_mls', 'soccer_fifa_world_cup'],
     oddsRegions: 'uk,eu,us',
     playerPropMarkets: 'player_shots_on_target',
+    apiSource: 'oddsapi',
+  },
+  {
+    key: 'soccer_tournament',
+    label: 'World Cup Tournament',
+    oddsApiKeys: [],
+    oddsRegions: '',
     apiSource: 'oddsapi',
   },
 ]

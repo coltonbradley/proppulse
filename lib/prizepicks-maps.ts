@@ -25,6 +25,7 @@ export const PP_STAT_MAP: Record<string, string> = {
   // Soccer / World Cup
   'Shots On Target':    'shots on target',
   'Shots':              'shots',
+  // Goals + Assists for WORLD CUP TRNY are already covered by NHL/NBA entries above
 }
 
 export const PP_LEAGUE_SPORT: Record<string, string> = {
@@ -33,7 +34,7 @@ export const PP_LEAGUE_SPORT: Record<string, string> = {
   'NHL':       'nhl',
   'MLB':       'mlb',
   'WORLD CUP':      'soccer',
-  'WORLD CUP TRNY': 'soccer',
+  'WORLD CUP TRNY': 'soccer_tournament',
 }
 
 export type PPLine = {

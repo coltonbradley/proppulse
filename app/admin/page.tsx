@@ -331,12 +331,11 @@ export default async function AdminPage() {
           <div>
             <h2 className="text-base font-semibold">PrizePicks Line Sync</h2>
             <p className="text-sm text-gray-400 mt-1">
-              Fetches the current standard-tier PrizePicks board from your browser
-              (bypassing server-side Cloudflare blocks) and caches the lines in Supabase.
-              Run this before seeding props so the seeder uses accurate PrizePicks lines.
+              Caches PP standard lines in Supabase for the odds seeder. Try the server sync first;
+              if PrizePicks blocks it, use the browser console script.
             </p>
           </div>
-          <PrizepicksSyncButton />
+          <PrizepicksSyncButton syncKey={process.env.CRON_SECRET ?? ''} />
         </section>
 
       </main>

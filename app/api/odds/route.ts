@@ -12,6 +12,17 @@ function getServiceClient() {
   )
 }
 
+// The Odds API sometimes returns abbreviated national team names; normalize to full names.
+const TEAM_NAME_MAP: Record<string, string> = {
+  'Africa': 'South Africa',
+  'S. Africa': 'South Africa',
+  'N. Ireland': 'Northern Ireland',
+  'Trinidad': 'Trinidad and Tobago',
+}
+function normalizeTeam(name: string): string {
+  return TEAM_NAME_MAP[name] ?? name
+}
+
 type Outcome = { name: string; price: number; point?: number; description?: string }
 
 async function seedGameLines(
@@ -119,7 +130,7 @@ async function seedPlayerProps(
     if (l.playerTeamFull) {
       return l.playerTeamFull === game.home_team || l.playerTeamFull === game.away_team
     }
-    return true
+    return sport !== 'soccer'
   })
 
   if (!gameLines.length) return count
@@ -270,6 +281,68 @@ export async function POST(req: Request) {
     ppGameMap.get(line.ppGameId)!.teams.add(line.playerTeamFull)
   }
 
+  // ── World Cup Tournament props (WORLD CUP TRNY in PrizePicks) ────────────────
+  // sport = 'soccer_tournament' in PP cache. Group by player's national team,
+  // create one virtual game per country: away=Country, home='the World'.
+  const internalSportFilter = sportFilter ? (ODDS_API_TO_SPORT[sportFilter] ?? sportFilter) : null
+  const processTournament = !internalSportFilter || internalSportFilter === 'soccer' || internalSportFilter === 'soccer_tournament'
+  const tournamentErrors: string[] = []
+  if (processTournament) {
+    const tourneyLines = Array.from(ppLines.values()).filter(l => l.sport === 'soccer_tournament' && l.playerTeamFull)
+    const byTeam = new Map<string, typeof tourneyLines[number][]>()
+    for (const line of tourneyLines) {
+      const team = line.playerTeamFull!
+      if (!byTeam.has(team)) byTeam.set(team, [])
+      byTeam.get(team)!.push(line)
+    }
+
+    for (const [team, teamLines] of byTeam) {
+      const startsAt = teamLines.find(l => l.gameStartsAt)?.gameStartsAt
+        ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      const extId = `wc-trny:${team.toLowerCase().replace(/\s+/g, '-')}`
+
+      const { data: existingTGame } = await supabase
+        .from('games').select('id').eq('sport', 'soccer_tournament').eq('away_team', team).single()
+
+      let tGameRowId: string
+      if (existingTGame) {
+        tGameRowId = (existingTGame as { id: string }).id
+      } else {
+        const { data: tGameRow, error: tGameErr } = await supabase
+          .from('games')
+          .upsert(
+            { external_id: extId, sport: 'soccer_tournament', home_team: 'the World', away_team: team, starts_at: startsAt, status: 'scheduled' },
+            { onConflict: 'external_id' }
+          )
+          .select('id').single()
+        if (tGameErr || !tGameRow) {
+          tournamentErrors.push(`game upsert ${team}: ${tGameErr?.message ?? 'no row returned'}`)
+          continue
+        }
+        tGameRowId = (tGameRow as { id: string }).id
+        results.games++
+      }
+
+      const { data: existTProps } = await supabase.from('questions').select('id').eq('game_id', tGameRowId).eq('question_type', 'player_prop')
+      const existTIds = (existTProps ?? []).map((q: { id: string }) => q.id)
+      if (existTIds.length) {
+        const { data: pickedT } = await supabase.from('picks').select('question_id').in('question_id', existTIds)
+        const pickedTSet = new Set((pickedT ?? []).map((p: { question_id: string }) => p.question_id))
+        const safeT = existTIds.filter((id: string) => !pickedTSet.has(id))
+        if (safeT.length) await supabase.from('questions').delete().in('id', safeT)
+      }
+
+      for (const ppLine of teamLines) {
+        const questionText = `${ppLine.playerName} ${ppLine.statLabel} — over or under ${ppLine.line}?`
+        const { error } = await supabase.from('questions').upsert(
+          { game_id: tGameRowId, sport: 'soccer_tournament', question_type: 'player_prop', stat: ppLine.statLabel, question_text: questionText, options: [{ label: `Over ${ppLine.line}` }, { label: `Under ${ppLine.line}` }], closes_at: startsAt, status: 'open' },
+          { onConflict: 'game_id,question_type,question_text', ignoreDuplicates: true }
+        )
+        if (!error) results.questions++
+      }
+    }
+  }
+
   for (const [ppGameId, { sport, startsAt, teams }] of ppGameMap) {
     if (!sportsToProcess.includes(sport)) continue
     const teamList = Array.from(teams)
@@ -331,7 +404,8 @@ export async function POST(req: Request) {
         continue
       }
 
-      for (const game of games) {
+      for (const rawGame of games) {
+        const game = { ...rawGame, home_team: normalizeTeam(rawGame.home_team), away_team: normalizeTeam(rawGame.away_team) }
         const gameDate = game.commence_time.slice(0, 10)
         const { data: existing } = await supabase
           .from('games')
@@ -363,7 +437,7 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, ...results, ppLines: ppLines.size, ...(Object.keys(apiErrors).length ? { apiErrors } : {}) })
+  return NextResponse.json({ ok: true, ...results, ppLines: ppLines.size, ...(tournamentErrors.length ? { tournamentErrors } : {}), ...(Object.keys(apiErrors).length ? { apiErrors } : {}) })
 }
 
 export async function GET() {
