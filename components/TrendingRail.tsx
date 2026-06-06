@@ -6,6 +6,7 @@ const TYPE_LABEL: Record<string, string> = {
   player_prop: 'PROP',
   game_line: 'LINE',
   over_under: 'O/U',
+  match_winner: 'WINNER',
 }
 
 function truncate(text: string, max: number) {

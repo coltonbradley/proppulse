@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sync-pp": "node --env-file=.env.local scripts/sync-prizepicks.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

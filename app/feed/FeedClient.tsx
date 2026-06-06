@@ -28,6 +28,14 @@ type Props = {
   userId: string | null
 }
 
+const SPORT_EMPTY_HINT: Record<string, string> = {
+  nba: 'Check back closer to tip-off.',
+  nfl: 'Check back closer to kickoff.',
+  mlb: 'Check back closer to first pitch.',
+  nhl: 'Check back closer to puck drop.',
+  soccer: 'Check back closer to kickoff.',
+}
+
 const TYPE_LABELS: Record<string, string> = {
   player_prop: 'props',
   game_line: 'lines',
@@ -64,8 +72,10 @@ export default function FeedClient({ initialQuestions, userId }: Props) {
   const [questions, setQuestions] = useState<Question[]>(initialQuestions)
   const [anonPicks, setAnonPicks] = useState<Record<string, number>>({})
   const [searchQuery, setSearchQuery] = useState('')
+  const sportFilter = params.get('sport') ?? 'all'
   const typeFilter = params.get('type') ?? 'all'
   const typeLabel = TYPE_LABELS[typeFilter] ?? 'props'
+  const emptyHint = SPORT_EMPTY_HINT[sportFilter] ?? 'Check back closer to game time.'
 
   useEffect(() => { setAnonPicks(readAnonPicks()) }, [])
 
@@ -169,8 +179,8 @@ export default function FeedClient({ initialQuestions, userId }: Props) {
   if (!questions.length) {
     return (
       <div className="text-center py-16 text-gray-500">
-        <p className="text-lg font-medium text-white">Props loading soon.</p>
-        <p className="text-sm mt-1">Check back closer to tip-off.</p>
+        <p className="text-lg font-medium text-white">Nothing here yet.</p>
+        <p className="text-sm mt-1">{emptyHint}</p>
       </div>
     )
   }
@@ -187,8 +197,9 @@ export default function FeedClient({ initialQuestions, userId }: Props) {
     )
   }
 
-  // When a type filter is active, render flat 2-col grid
-  if (typeFilter !== 'all') {
+  // Flat 2-col grid when type filter is active OR all visible questions are match winners
+  const allMatchWinner = filtered.length > 0 && filtered.every((q) => q.question_type === 'match_winner')
+  if (typeFilter !== 'all' || allMatchWinner) {
     return (
       <div className="space-y-3">
         {searchBar}
@@ -207,14 +218,17 @@ export default function FeedClient({ initialQuestions, userId }: Props) {
     )
   }
 
-  // Group by game_id, sort games by start time
+  // In the "All" view, split match winners from props so they render in a flat 2-col grid
+  const matchWinners = filtered.filter((q) => q.question_type === 'match_winner')
+  const props = filtered.filter((q) => q.question_type !== 'match_winner')
+
+  // Group props by game_id, sort games by start time
   const gameMap = new Map<string, Question[]>()
-  for (const q of filtered) {
+  for (const q of props) {
     const existing = gameMap.get(q.game_id) ?? []
     gameMap.set(q.game_id, [...existing, q])
   }
 
-  // Sort questions within each game: line → O/U → props
   for (const [gameId, qs] of gameMap) {
     gameMap.set(
       gameId,
@@ -222,16 +236,22 @@ export default function FeedClient({ initialQuestions, userId }: Props) {
     )
   }
 
-  // Sort games by earliest start time
   const sortedGames = Array.from(gameMap.entries()).sort(([, aQs], [, bQs]) => {
     const aTime = aQs[0]?.games?.starts_at ?? ''
     const bTime = bQs[0]?.games?.starts_at ?? ''
     return aTime.localeCompare(bTime)
   })
 
+  // Sort match winners by game start time
+  const sortedMatchWinners = [...matchWinners].sort((a, b) =>
+    (a.games?.starts_at ?? '').localeCompare(b.games?.starts_at ?? '')
+  )
+
   return (
     <div className="space-y-6">
       {searchBar}
+
+      {/* Player props grouped by game */}
       {sortedGames.map(([gameId, gameQuestions]) => {
         const game = gameQuestions[0]?.games
         return (
@@ -263,6 +283,28 @@ export default function FeedClient({ initialQuestions, userId }: Props) {
           </div>
         )
       })}
+
+      {/* Match winners as a flat 2-col grid */}
+      {sortedMatchWinners.length > 0 && (
+        <div>
+          {sortedGames.length > 0 && (
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2 px-1">
+              Match Winners
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            {sortedMatchWinners.map((q) => (
+              <QuestionCard
+                key={q.id}
+                question={q}
+                userId={userId}
+                anonPick={anonPicks[q.id] ?? null}
+                onAnonVote={handleAnonVote}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

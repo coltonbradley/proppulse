@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { fetchGames, fetchPlayerProps, type OddsApiGame, type OddsApiSportKey } from '@/lib/odds-api'
+import { SPORT_BY_KEY } from '@/lib/sports.config'
 import { ALL_ODDS_API_KEYS, ODDS_API_TO_SPORT } from '@/lib/sports.config'
+import { fetchPrizePicksLines, type PPLine } from '@/lib/prizepicks'
 
 function getServiceClient() {
   return createClient(
@@ -102,7 +104,72 @@ async function seedPlayerProps(
   apiSport: OddsApiSportKey,
   game: OddsApiGame,
   gameRowId: string,
-  sport: string
+  sport: string,
+  ppLines: Map<string, import('@/lib/prizepicks').PPLine>
+) {
+  let count = 0
+
+  // All sports: seed props directly from PrizePicks cache.
+  // Filter to lines for this specific game by matching the player's team name
+  // against the game's home/away team (both use full official team names).
+  const gameLines = Array.from(ppLines.values()).filter(l => {
+    if (l.sport !== sport) return false
+    // If team info is available, match by team — prevents Wembanyama appearing in a Cubs game.
+    // If team info is missing (old cache), fall back to sport-only match.
+    if (l.playerTeamFull) {
+      return l.playerTeamFull === game.home_team || l.playerTeamFull === game.away_team
+    }
+    return true
+  })
+
+  if (!gameLines.length) return count
+
+  // Delete any existing player props for this game that have no picks yet.
+  const { data: existingProps } = await supabase
+    .from('questions')
+    .select('id')
+    .eq('game_id', gameRowId)
+    .eq('question_type', 'player_prop')
+  const existingIds = (existingProps ?? []).map((q: { id: string }) => q.id)
+  if (existingIds.length) {
+    const { data: pickedIds } = await supabase
+      .from('picks')
+      .select('question_id')
+      .in('question_id', existingIds)
+    const pickedSet = new Set((pickedIds ?? []).map((p: { question_id: string }) => p.question_id))
+    const safeToDelete = existingIds.filter((id: string) => !pickedSet.has(id))
+    if (safeToDelete.length) {
+      await supabase.from('questions').delete().in('id', safeToDelete)
+    }
+  }
+
+  for (const ppLine of gameLines) {
+    const questionText = `${ppLine.playerName} ${ppLine.statLabel} — over or under ${ppLine.line}?`
+    const { error } = await supabase.from('questions').upsert(
+      {
+        game_id: gameRowId,
+        sport,
+        question_type: 'player_prop',
+        stat: ppLine.statLabel,
+        question_text: questionText,
+        options: [{ label: `Over ${ppLine.line}` }, { label: `Under ${ppLine.line}` }],
+        closes_at: game.commence_time,
+        status: 'open',
+      },
+      { onConflict: 'game_id,question_type,question_text', ignoreDuplicates: true }
+    )
+    if (!error) count++
+  }
+
+  return count
+}
+
+async function seedSoccerProps(
+  supabase: ReturnType<typeof getServiceClient>,
+  apiSport: OddsApiSportKey,
+  game: OddsApiGame,
+  gameRowId: string,
+  ppLines: Map<string, import('@/lib/prizepicks').PPLine>
 ) {
   let count = 0
   try {
@@ -115,7 +182,6 @@ async function seedPlayerProps(
       const outcomes: Outcome[] = market.outcomes
       const statLabel = market.key.replace('player_', '').replace(/_/g, ' ')
 
-      // Group outcomes by player name (stored in the description field)
       const byPlayer = new Map<string, { over: Outcome | null; under: Outcome | null }>()
       for (const outcome of outcomes) {
         const player = outcome.description ?? 'Unknown'
@@ -126,20 +192,29 @@ async function seedPlayerProps(
       }
 
       for (const [player, { over, under }] of byPlayer) {
-        if (!over || !under || over.point == null) continue
-        const questionText = `${player} ${statLabel} — over or under ${over.point}?`
+        if (!over || over.point == null || over.point <= 0) continue
+        if (!player || player.startsWith('{') || /^total$/i.test(player.trim())) continue
+
+        const ppKey = `${player.toLowerCase()}:${statLabel}`
+        const ppEntry = ppLines.get(ppKey)
+        const finalLine = ppEntry ? ppEntry.line : over.point
+
+        const hasUnder = !!under
+        const questionText = hasUnder
+          ? `${player} ${statLabel} — over or under ${finalLine}?`
+          : `${player} ${finalLine}+ ${statLabel}?`
+        const options = hasUnder
+          ? [{ label: `Over ${finalLine}` }, { label: `Under ${finalLine}` }]
+          : [{ label: 'Yes' }, { label: 'No' }]
 
         const { error } = await supabase.from('questions').upsert(
           {
             game_id: gameRowId,
-            sport,
+            sport: 'soccer',
             question_type: 'player_prop',
             stat: statLabel,
             question_text: questionText,
-            options: [
-              { label: `Over ${over.point}` },
-              { label: `Under ${under.point ?? over.point}` },
-            ],
+            options,
             closes_at: game.commence_time,
             status: 'open',
           },
@@ -149,7 +224,7 @@ async function seedPlayerProps(
       }
     }
   } catch {
-    // Player props endpoint may 404 on free tier or for games without markets
+    // Soccer props endpoint may 404 for games without markets
   }
   return count
 }
@@ -157,7 +232,8 @@ async function seedPlayerProps(
 export async function POST(req: Request) {
   const secret = req.headers.get('x-cron-secret')
   const bearer = req.headers.get('authorization')
-  const validCron = secret === process.env.CRON_SECRET
+  const cronSecret = process.env.CRON_SECRET
+  const validCron = secret === cronSecret || bearer === `Bearer ${cronSecret}`
   const validBearer = bearer === `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
   if (!validCron && !validBearer) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -165,44 +241,129 @@ export async function POST(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const sportFilter = searchParams.get('sport')
-  const propsOnly = searchParams.get('props_only') === 'true'
 
   const supabase = getServiceClient()
   const results = { games: 0, questions: 0 }
+  const apiErrors: Record<string, string> = {}
 
-  const apiKeys = sportFilter ? [sportFilter] : ALL_ODDS_API_KEYS
+  // Load PrizePicks cache — source of truth for all US sport props and game discovery
+  const ppLines = await fetchPrizePicksLines()
 
-  for (const apiSport of apiKeys) {
-    const sport = ODDS_API_TO_SPORT[apiSport]
-    if (!sport) continue
-    const games = await fetchGames(apiSport)
+  // ── US sports: discover games + seed props from PrizePicks cache ──────────
+  // Group PP lines by pp_game_id to find unique upcoming games.
+  // Both teams' players appear under the same pp_game_id, so we can recover
+  // both team names without any abbreviation lookup table.
+  const usSports = ['nba', 'nfl', 'mlb', 'nhl', 'soccer']
+  const sportsToProcess = sportFilter
+    ? [ODDS_API_TO_SPORT[sportFilter]].filter(Boolean)
+    : usSports
 
-    for (const game of games) {
+  const ppGameMap = new Map<string, { sport: string; startsAt: string; teams: Set<string> }>()
+  for (const line of ppLines.values()) {
+    if (!usSports.includes(line.sport)) continue
+    if (!line.ppGameId || !line.gameStartsAt || !line.playerTeamFull) continue
+    if (sportFilter && ODDS_API_TO_SPORT[sportFilter] !== line.sport) continue
+
+    if (!ppGameMap.has(line.ppGameId)) {
+      ppGameMap.set(line.ppGameId, { sport: line.sport, startsAt: line.gameStartsAt, teams: new Set() })
+    }
+    ppGameMap.get(line.ppGameId)!.teams.add(line.playerTeamFull)
+  }
+
+  for (const [ppGameId, { sport, startsAt, teams }] of ppGameMap) {
+    if (!sportsToProcess.includes(sport)) continue
+    const teamList = Array.from(teams)
+    if (teamList.length < 2) continue  // need both teams to create a valid game record
+
+    const [homeTeam, awayTeam] = teamList
+    const gameDate = startsAt.slice(0, 10)
+
+    // Dedup: reuse an existing game row for the same match if already in DB.
+    // Use fuzzy last-word matching so "Golden Knights" matches "Vegas Golden Knights".
+    const lastWord = (s: string) => s.toLowerCase().trim().split(' ').pop() ?? ''
+    const fuzzyMatch = (a: string, b: string) =>
+      a.toLowerCase().trim() === b.toLowerCase().trim() ||
+      (lastWord(a).length > 2 && lastWord(a) === lastWord(b))
+
+    const { data: candidateGames } = await supabase
+      .from('games')
+      .select('id, home_team, away_team')
+      .eq('sport', sport)
+      .gte('starts_at', `${gameDate}T00:00:00Z`)
+      .lt('starts_at', `${gameDate}T23:59:59Z`)
+
+    const existingByTeams = (candidateGames ?? []).find(
+      (g: { id: string; home_team: string; away_team: string }) =>
+        fuzzyMatch(g.home_team, homeTeam) && fuzzyMatch(g.away_team, awayTeam)
+    )
+
+    let gameRowId: string
+    if (existingByTeams) {
+      gameRowId = existingByTeams.id
+    } else {
       const { data: gameRow, error: gameErr } = await supabase
         .from('games')
         .upsert(
-          {
-            external_id: game.id,
-            sport,
-            home_team: game.home_team,
-            away_team: game.away_team,
-            starts_at: game.commence_time,
-            status: 'scheduled',
-          },
+          { external_id: ppGameId, sport, home_team: homeTeam, away_team: awayTeam, starts_at: startsAt, status: 'scheduled' },
           { onConflict: 'external_id' }
         )
         .select('id')
         .single()
-
       if (gameErr || !gameRow) continue
+      gameRowId = gameRow.id
       results.games++
+    }
 
-      if (!propsOnly) results.questions += await seedGameLines(supabase, game, gameRow.id, sport)
-      results.questions += await seedPlayerProps(supabase, apiSport, game, gameRow.id, sport)
+    results.questions += await seedPlayerProps(supabase, sport as OddsApiSportKey, { id: ppGameId, home_team: homeTeam, away_team: awayTeam, commence_time: startsAt, sport_key: sport, bookmakers: [] }, gameRowId, sport, ppLines)
+  }
+
+  // ── Soccer: still uses The Odds API for game discovery + props ────────────
+  const soccerKeys = ALL_ODDS_API_KEYS.filter(k => ODDS_API_TO_SPORT[k] === 'soccer')
+  const processSoccer = !sportFilter || ODDS_API_TO_SPORT[sportFilter] === 'soccer'
+
+  if (processSoccer) {
+    for (const apiSport of soccerKeys) {
+      let games
+      try {
+        games = await fetchGames(apiSport)
+      } catch (err) {
+        apiErrors[apiSport] = err instanceof Error ? err.message : String(err)
+        continue
+      }
+
+      for (const game of games) {
+        const gameDate = game.commence_time.slice(0, 10)
+        const { data: existing } = await supabase
+          .from('games')
+          .select('id')
+          .eq('sport', 'soccer')
+          .eq('home_team', game.home_team)
+          .eq('away_team', game.away_team)
+          .gte('starts_at', `${gameDate}T00:00:00Z`)
+          .lt('starts_at', `${gameDate}T23:59:59Z`)
+          .neq('external_id', game.id)
+          .single()
+
+        if (existing) continue
+
+        const { data: gameRow, error: gameErr } = await supabase
+          .from('games')
+          .upsert(
+            { external_id: game.id, sport: 'soccer', home_team: game.home_team, away_team: game.away_team, starts_at: game.commence_time, status: 'scheduled' },
+            { onConflict: 'external_id' }
+          )
+          .select('id')
+          .single()
+
+        if (gameErr || !gameRow) continue
+        results.games++
+        results.questions += await seedGameLines(supabase, game, gameRow.id, 'soccer')
+        results.questions += await seedSoccerProps(supabase, apiSport, game, gameRow.id, ppLines)
+      }
     }
   }
 
-  return NextResponse.json({ ok: true, ...results })
+  return NextResponse.json({ ok: true, ...results, ppLines: ppLines.size, ...(Object.keys(apiErrors).length ? { apiErrors } : {}) })
 }
 
 export async function GET() {
@@ -222,15 +383,5 @@ export async function GET() {
     const key = `${row.sport}/${row.question_type}/${row.status}`
     upcomingCounts[key] = (upcomingCounts[key] ?? 0) + 1
   }
-  // Test exact feed query for soccer match_winner
-  const { data: feedTest, error: feedErr } = await supabase
-    .from('questions')
-    .select('id, question_text, games!inner(home_team, away_team)')
-    .eq('status', 'open')
-    .gt('closes_at', now)
-    .in('question_type', ['player_prop', 'match_winner'])
-    .eq('sport', 'soccer')
-    .limit(3)
-
-  return NextResponse.json({ all: allCounts, upcoming: upcomingCounts, matchWinnerSample: sample, feedTest, feedErr })
+  return NextResponse.json({ all: allCounts, upcoming: upcomingCounts })
 }

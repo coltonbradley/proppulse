@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { ALL_ODDS_API_KEYS } from '@/lib/sports.config'
+import {
+  fetchEspnGamesForDate,
+  fetchEspnPlayerStats,
+  resolvePlayerProp,
+  extractPlayerName,
+  extractStatFromQuestion,
+  teamsMatch,
+} from '@/lib/espn-stats'
 
 function getServiceClient() {
   return createClient(
@@ -18,8 +26,11 @@ type ScoreResult = {
 }
 
 async function fetchScores(sport: string): Promise<ScoreResult[]> {
+  // Game scores (spreads/totals/match_winner) sourced from The Odds API scores endpoint
+  const key = process.env.ODDS_API_KEY
+  if (!key) return []
   const res = await fetch(
-    `https://api.the-odds-api.com/v4/sports/${sport}/scores/?apiKey=${process.env.ODDS_API_KEY}&daysFrom=3`
+    `https://api.the-odds-api.com/v4/sports/${sport}/scores?daysFrom=3&apiKey=${key}`
   )
   if (!res.ok) return []
   return res.json()
@@ -180,13 +191,17 @@ async function recomputeUserStats(
   }
 }
 
-// Called by Vercel cron every 30 minutes
+// Called by Vercel cron. Vercel sends Authorization: Bearer <CRON_SECRET>;
+// manual triggers may also use x-cron-secret for convenience.
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get('x-cron-secret')
-  if (secret !== process.env.CRON_SECRET) {
+  const cronSecret = process.env.CRON_SECRET
+  const bearer = req.headers.get('authorization')
+  const manual = req.headers.get('x-cron-secret')
+  if (bearer !== `Bearer ${cronSecret}` && manual !== cronSecret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return runResolver()
+  const debug = new URL(req.url).searchParams.get('debug') === '1'
+  return runResolver(debug)
 }
 
 // Also allow manual POST trigger (e.g. for testing)
@@ -198,15 +213,14 @@ export async function POST(req: NextRequest) {
   return runResolver()
 }
 
-async function runResolver() {
+async function runResolver(debug = false) {
   const supabase = getServiceClient()
   const results = { resolved: 0, skipped: 0, errors: 0 }
+  const debugLog: string[] = []
 
   // Fetch scores for all sports defined in config
   const allScores = await Promise.all(ALL_ODDS_API_KEYS.map((key) => fetchScores(key)))
   const completedGames = allScores.flat().filter((g) => g.completed && g.scores)
-
-  if (!completedGames.length) return NextResponse.json({ ...results })
 
   const externalIds = completedGames.map((g) => g.id)
 
@@ -223,8 +237,6 @@ async function runResolver() {
     .in('status', ['open', 'closed'])
     .is('correct_option', null)
     .in('question_type', ['over_under', 'game_line', 'match_winner'])
-
-  if (!questions?.length) return NextResponse.json({ ...results })
 
   const affectedUsers = new Set<string>()
 
@@ -285,10 +297,145 @@ async function runResolver() {
     results.resolved++
   }
 
+  // === Player Prop Resolution via ESPN Stats API ===
+  // Find open player props whose game time has already passed
+  const { data: openProps } = await supabase
+    .from('questions')
+    .select(`
+      id,
+      question_text,
+      stat,
+      options,
+      sport,
+      games!inner(id, home_team, away_team, starts_at)
+    `)
+    .eq('status', 'open')
+    .eq('question_type', 'player_prop')
+    .is('correct_option', null)
+    .lt('closes_at', new Date().toISOString())
+
+  if (debug) {
+    const { data: nbaProps } = await supabase
+      .from('questions')
+      .select('question_text, closes_at')
+      .eq('status', 'open')
+      .eq('question_type', 'player_prop')
+      .eq('sport', 'nba')
+      .is('correct_option', null)
+      .ilike('question_text', '%Alvarado%')
+      .limit(10)
+    debugLog.push(`openProps_count=${openProps?.length ?? 0} now=${new Date().toISOString()} alvarado_nba=${nbaProps?.map(p=>p.question_text.slice(0,30)+'@'+p.closes_at).join('|')}`)
+  }
+  if (openProps?.length) {
+    type PropRow = {
+      id: string
+      question_text: string
+      stat: string | null
+      options: { label: string }[]
+      sport: string
+      games: { id: string; home_team: string; away_team: string; starts_at: string }
+    }
+
+    // Group by sport → game so we batch ESPN requests per game
+    const byGame = new Map<string, { sport: string; home: string; away: string; date: string; props: PropRow[] }>()
+    for (const prop of openProps as unknown as PropRow[]) {
+      // Supabase may return the join as an array — normalise to a single object
+      const gameRow = Array.isArray(prop.games) ? prop.games[0] : prop.games
+      if (!gameRow?.id) continue
+      const gameId = gameRow.id
+      if (!byGame.has(gameId)) {
+        const dateStr = gameRow.starts_at.slice(0, 10).replace(/-/g, '')
+        byGame.set(gameId, {
+          sport: prop.sport,
+          home: gameRow.home_team,
+          away: gameRow.away_team,
+          date: dateStr,
+          props: [],
+        })
+      }
+      byGame.get(gameId)!.props.push(prop)
+    }
+
+    // Cache ESPN scoreboard per sport+date to avoid duplicate fetches
+    const espnScoreboardCache = new Map<string, Awaited<ReturnType<typeof fetchEspnGamesForDate>>>()
+
+    for (const [, { sport, home, away, date, props }] of byGame) {
+      const cacheKey = `${sport}:${date}`
+      if (!espnScoreboardCache.has(cacheKey)) {
+        espnScoreboardCache.set(cacheKey, await fetchEspnGamesForDate(sport, date))
+      }
+      const espnGames = espnScoreboardCache.get(cacheKey) ?? []
+
+      const espnGame = espnGames.find(
+        (g) => teamsMatch(g.homeTeam, home) && teamsMatch(g.awayTeam, away)
+      )
+      if (!espnGame) {
+        if (debug) debugLog.push(`NO_ESPN_GAME sport=${sport} date=${date} home=${home} away=${away} espnGames=${espnGames.map(g=>g.homeTeam+'/'+g.awayTeam).join('|')}`)
+        results.skipped += props.length; continue
+      }
+
+      const playerStats = await fetchEspnPlayerStats(sport, espnGame.espnEventId)
+      if (!playerStats.length) {
+        if (debug) debugLog.push(`NO_ESPN_STATS sport=${sport} eventId=${espnGame.espnEventId}`)
+        results.skipped += props.length; continue
+      }
+
+      for (const prop of props) {
+        const playerName = extractPlayerName(prop.question_text)
+        // Soccer Yes/No props embed the line in the question text ("Raul Jimenez 0.5+ shots on target?")
+        // All other props store it in options[0].label ("Over 2.5")
+        const isYesNo = prop.options[0]?.label === 'Yes'
+        const lineRaw = isYesNo
+          ? (prop.question_text.match(/(\d+\.?\d*)\+?/)?.[1] ?? '')
+          : (prop.options[0]?.label.replace(/^Over\s*/i, '') ?? '')
+        const line = parseFloat(lineRaw)
+        if (!playerName || isNaN(line)) {
+          if (debug) debugLog.push(`BAD_PARSE q=${prop.question_text} player=${playerName} line=${line}`)
+          results.skipped++; continue
+        }
+
+        // Use stat column when available; fall back to parsing from question_text
+        // (props seeded before the stat column existed will have stat = null)
+        const statLabel = prop.stat ?? extractStatFromQuestion(prop.question_text)
+        const correctOption = resolvePlayerProp(playerName, statLabel, line, playerStats)
+        if (correctOption === null) {
+          if (debug) debugLog.push(`NO_MATCH player=${playerName} stat=${statLabel} line=${line}`)
+          results.skipped++; continue
+        }
+
+        await supabase
+          .from('questions')
+          .update({ correct_option: correctOption, status: 'resolved' })
+          .eq('id', prop.id)
+
+        const { data: winPicks } = await supabase
+          .from('picks')
+          .update({ result: 'win' })
+          .eq('question_id', prop.id)
+          .eq('option_index', correctOption)
+          .select('user_id')
+
+        const { data: lossPicks } = await supabase
+          .from('picks')
+          .update({ result: 'loss' })
+          .eq('question_id', prop.id)
+          .neq('option_index', correctOption)
+          .select('user_id')
+
+        for (const p of [...(winPicks ?? []), ...(lossPicks ?? [])]) {
+          affectedUsers.add((p as { user_id: string }).user_id)
+        }
+        results.resolved++
+      }
+    }
+  }
+
   // Recompute stats for all affected users
   if (affectedUsers.size) {
     await recomputeUserStats(supabase, Array.from(affectedUsers))
   }
 
-  return NextResponse.json({ ...results, usersUpdated: affectedUsers.size })
+  const out: Record<string, unknown> = { ...results, usersUpdated: affectedUsers.size }
+  if (debug && debugLog.length) out.debug = debugLog.slice(0, 50)
+  return NextResponse.json(out)
 }

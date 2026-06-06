@@ -57,28 +57,27 @@ export default async function FeedPage({ searchParams }: Props) {
     `)
     .eq('status', 'open')
     .gt('closes_at', new Date().toISOString())
+    .not('question_text', 'like', '[MOCK]%')
     .order('closes_at', { ascending: true })
 
   if (sport && sport !== 'all') query = query.eq('sport', sport)
   if (type && type !== 'all') query = query.eq('question_type', type)
   else query = query.in('question_type', ['player_prop', 'match_winner'])
-  if (stat && stat !== 'all') query = query.eq('stat', stat)
+  if (stat && stat !== 'all') query = query.or(`stat.eq.${stat},question_type.eq.match_winner`)
 
-  // Trending: consensus rows updated in the last hour
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-  const trendingQuery = supabase
-    .from('consensus')
-    .select('question_id, vote_count')
-    .gt('updated_at', oneHourAgo)
+  // Trending: RPC computes recent vote velocity × consensus lopsidedness
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const trendingQuery = (supabase as any).rpc('get_trending_questions', { p_limit: 10 })
 
-  // Available stat categories for the filter pills
-  const statsQuery = supabase
+  // Available stat categories — only meaningful when a specific sport is selected
+  let statsQuery = supabase
     .from('questions')
     .select('stat')
     .eq('status', 'open')
     .eq('question_type', 'player_prop')
     .gt('closes_at', new Date().toISOString())
     .not('stat', 'is', null)
+  if (sport && sport !== 'all') statsQuery = statsQuery.eq('sport', sport)
 
   const [{ data: rawQuestions }, { data: recentConsensus }, { data: statRows }] = await Promise.all([
     query,
@@ -92,25 +91,23 @@ export default async function FeedPage({ searchParams }: Props) {
 
   const questions = (rawQuestions ?? []) as unknown as QuestionRow[]
 
-  // Aggregate total votes per question from recent consensus activity
-  const votesPerQuestion: Record<string, number> = {}
-  for (const row of (recentConsensus ?? []) as { question_id: string; vote_count: number }[]) {
-    votesPerQuestion[row.question_id] = (votesPerQuestion[row.question_id] ?? 0) + row.vote_count
-  }
-
-  // Build trending list: top 5 by recent vote count, open questions only
+  // Build trending from RPC: trend_score = recent_votes × abs(dominant_pct − 50) / 100
+  type TrendingRow = { question_id: string; recent_votes: number; trend_score: number }
   const openIds = new Set(questions.map((q) => q.id))
-  const trending: TrendingQuestion[] = Object.entries(votesPerQuestion)
-    .filter(([id]) => openIds.has(id))
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 5)
-    .map(([id, total_votes]) => {
-      const q = questions.find((q) => q.id === id)!
-      return { id, question_text: q.question_text, question_type: q.question_type, total_votes }
+  const trending: TrendingQuestion[] = ((recentConsensus ?? []) as TrendingRow[])
+    .filter((row) => openIds.has(row.question_id))
+    .map((row) => {
+      const q = questions.find((q) => q.id === row.question_id)!
+      return {
+        id: row.question_id,
+        question_text: q.question_text,
+        question_type: q.question_type,
+        total_votes: row.recent_votes,
+      }
     })
 
-  // If fewer than 3 trending, fall back to highest total-voted open questions
-  if (trending.length < 3) {
+  // Fallback: if fewer than 5 from velocity scoring, fill with highest all-time voted questions
+  if (trending.length < 5) {
     const byTotal = [...questions]
       .map((q) => ({
         id: q.id,
@@ -120,7 +117,7 @@ export default async function FeedPage({ searchParams }: Props) {
       }))
       .filter((q) => !trending.find((t) => t.id === q.id) && q.total_votes > 0)
       .sort((a, b) => b.total_votes - a.total_votes)
-      .slice(0, 5 - trending.length)
+      .slice(0, 10 - trending.length)
 
     trending.push(...byTotal)
   }

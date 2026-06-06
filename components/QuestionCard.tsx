@@ -35,16 +35,31 @@ function shortTeam(name: string) {
 
 function formatGameInfo(game: GameInfo) {
   const d = new Date(game.starts_at)
-  const day = d.toLocaleDateString('en-US', { weekday: 'short' })
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   return {
     matchup: `${shortTeam(game.away_team)} @ ${shortTeam(game.home_team)}`,
-    time: `${day} · ${time}`,
+    time: `${date} · ${time}`,
   }
 }
 
 function parsePlayerProp(questionText: string, options: { label: string }[]) {
   const clean = questionText.replace(/^\[MOCK\]\s*/i, '').replace(/\?$/, '')
+  const isYesNo = options[0]?.label === 'Yes'
+
+  if (isYesNo) {
+    // Question text: "Raul Jimenez 0.5+ shots on target"
+    // Split on the line token (digit pattern), e.g. "0.5+"
+    const words = clean.split(' ')
+    let lineIdx = words.findIndex((w) => /^\d/.test(w))
+    if (lineIdx === -1) lineIdx = words.length
+    const playerName = words.slice(0, lineIdx).join(' ')
+    const lineToken = (words[lineIdx] ?? '').replace('+', '')
+    const statRaw = words.slice(lineIdx + 1).join(' ')
+    const statLabel = statRaw.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    return { playerName, statLabel, line: lineToken, isYesNo: true }
+  }
+
   const nameAndStat = clean.split(' — over or under ')[0] ?? clean
   const line = options[0]?.label.replace(/^(Over|Under)\s*/i, '').trim() ?? ''
 
@@ -59,7 +74,7 @@ function parsePlayerProp(questionText: string, options: { label: string }[]) {
   const statRaw = words.slice(splitIdx).join(' ')
   const statLabel = statRaw.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 
-  return { playerName, statLabel, line }
+  return { playerName, statLabel, line, isYesNo: false }
 }
 
 export default function QuestionCard({ question, userId, anonPick, onAnonVote }: Props) {
@@ -74,13 +89,15 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
   const hasVoted = effectivePick !== null
   const isOpen = question.status === 'open' && new Date(question.closes_at) > new Date()
 
-  const isSharp = hasVoted && localConsensus.some(
-    (c) => c.option_index === effectivePick && c.pct >= 70
-  )
+  const pickedPct = hasVoted
+    ? (localConsensus.find((c) => c.option_index === effectivePick)?.pct ?? null)
+    : null
+  const isFollowingHerd = pickedPct !== null && pickedPct >= 70
+  const isFadingHerd = pickedPct !== null && pickedPct <= 30
 
   const isMatchWinner = question.question_type === 'match_winner'
-  const { playerName, statLabel, line } = isMatchWinner
-    ? { playerName: '', statLabel: '', line: '' }
+  const { playerName, statLabel, line, isYesNo } = isMatchWinner
+    ? { playerName: '', statLabel: '', line: '', isYesNo: false }
     : parsePlayerProp(question.question_text, question.options)
   const gameInfo = question.games ? formatGameInfo(question.games) : null
   const statCfg = getStatConfig(question.stat)
@@ -134,6 +151,11 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
         const row = localConsensus.find((c) => c.option_index === i)
         return { label: opt.label, idx: i, pct: row?.pct ?? 0, count: row?.vote_count ?? 0 }
       })
+    : isYesNo
+    ? [
+        { label: 'More', idx: 0, pct: localConsensus.find((c) => c.option_index === 0)?.pct ?? 0, count: localConsensus.find((c) => c.option_index === 0)?.vote_count ?? 0 },
+        { label: 'Less', idx: 1, pct: localConsensus.find((c) => c.option_index === 1)?.pct ?? 0, count: localConsensus.find((c) => c.option_index === 1)?.vote_count ?? 0 },
+      ]
     : [
         { label: 'More', idx: 0, pct: localConsensus.find((c) => c.option_index === 0)?.pct ?? 0, count: localConsensus.find((c) => c.option_index === 0)?.vote_count ?? 0 },
         { label: 'Less', idx: 1, pct: localConsensus.find((c) => c.option_index === 1)?.pct ?? 0, count: localConsensus.find((c) => c.option_index === 1)?.vote_count ?? 0 },
@@ -149,9 +171,14 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${pillStyle}`}>
           {pillLabel}
         </span>
-        {isSharp && (
+        {isFollowingHerd && (
           <span className="text-[10px] font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded-full">
-            SHARP
+            Following the Herd
+          </span>
+        )}
+        {isFadingHerd && (
+          <span className="text-[10px] font-bold text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full">
+            Fading the Herd
           </span>
         )}
       </div>
@@ -271,7 +298,7 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
           })}
           {totalVotes > 0 && (
             <p className="text-[10px] text-gray-600 text-right mt-0.5">
-              {totalVotes.toLocaleString()} votes
+              {totalVotes === 1 ? '1 vote' : `${totalVotes.toLocaleString()} votes`}
             </p>
           )}
         </div>

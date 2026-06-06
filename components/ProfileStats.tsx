@@ -19,17 +19,20 @@ export default function ProfileStats({ stats }: Props) {
       {/* Hero: vs community score */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-1">
-          vs. the crowd
+          vs. the Herd
         </p>
         <p className={`text-5xl font-bold ${vsNeutral ? 'text-gray-400' : vsPositive ? 'text-green-400' : 'text-red-400'}`}>
           {vsPositive ? '+' : ''}{stats.vs_community_pct}%
         </p>
+        <p className="text-xs text-gray-600 mt-1">
+          You: {stats.accuracy_pct}% · Herd: {stats.accuracy_pct - stats.vs_community_pct}%
+        </p>
         <p className="text-sm text-gray-500 mt-2">
           {vsNeutral
-            ? 'Picking right alongside the crowd'
+            ? 'Picking right alongside the Herd'
             : vsPositive
-            ? `Outperforming the crowd by ${stats.vs_community_pct}%`
-            : `Crowd is beating you by ${Math.abs(stats.vs_community_pct)}%`}
+            ? `Outperforming the Herd by ${stats.vs_community_pct}%`
+            : `The Herd is beating you by ${Math.abs(stats.vs_community_pct)}%`}
         </p>
       </div>
 

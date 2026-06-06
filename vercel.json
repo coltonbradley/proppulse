@@ -1,8 +1,12 @@
 {
   "crons": [
     {
-      "path": "/api/resolver",
+      "path": "/api/odds",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/resolver",
+      "schedule": "0 7 * * *"
     }
   ]
 }

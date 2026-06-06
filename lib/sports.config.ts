@@ -3,7 +3,8 @@ export type SportConfig = {
   label: string          // display label in UI
   oddsApiKeys: string[]  // one or more Odds API sport keys that map to this sport
   oddsRegions: string    // regions param for the Odds API odds endpoint
-  playerPropMarkets?: string  // comma-separated Odds API market keys for player props
+  playerPropMarkets?: string  // comma-separated market keys for player props
+  apiSource?: 'parlay' | 'oddsapi'  // which API to use for both games and props (default: parlay)
 }
 
 export const SPORTS_CONFIG: SportConfig[] = [
@@ -12,35 +13,36 @@ export const SPORTS_CONFIG: SportConfig[] = [
     label: 'NBA',
     oddsApiKeys: ['basketball_nba'],
     oddsRegions: 'us,ca',
-    playerPropMarkets: 'player_points,player_rebounds,player_assists',
+    apiSource: 'oddsapi',
   },
   {
     key: 'nfl',
     label: 'NFL',
     oddsApiKeys: ['americanfootball_nfl'],
     oddsRegions: 'us,ca',
-    playerPropMarkets: 'player_pass_tds,player_rush_yds,player_rec_yds',
+    apiSource: 'oddsapi',
   },
   {
     key: 'mlb',
     label: 'MLB',
     oddsApiKeys: ['baseball_mlb'],
     oddsRegions: 'us,ca',
-    playerPropMarkets: 'player_hits,player_total_bases,player_strikeouts',
+    apiSource: 'oddsapi',
   },
   {
     key: 'nhl',
     label: 'NHL',
     oddsApiKeys: ['icehockey_nhl'],
     oddsRegions: 'us,ca',
-    playerPropMarkets: 'player_goals,player_assists,player_shots_on_goal',
+    apiSource: 'oddsapi',
   },
   {
     key: 'soccer',
     label: 'Soccer',
     oddsApiKeys: ['soccer_epl', 'soccer_usa_mls', 'soccer_fifa_world_cup'],
     oddsRegions: 'uk,eu,us',
-    playerPropMarkets: 'player_goal_scorer_anytime,player_shots_on_target,player_total_shots',
+    playerPropMarkets: 'player_shots_on_target',
+    apiSource: 'oddsapi',
   },
 ]
 

@@ -12,6 +12,7 @@ const SPORTS = [
 const TYPES = [
   { key: 'all', label: 'All' },
   { key: 'player_prop', label: 'Props' },
+  { key: 'match_winner', label: 'Match Winners' },
 ]
 
 type Props = { availableStats?: string[] }
@@ -29,6 +30,15 @@ export default function FeedFilter({ availableStats = [] }: Props) {
       next.delete(key)
     } else {
       next.set(key, value)
+    }
+    // Changing sport resets type and stat filters to avoid empty results
+    if (key === 'sport') {
+      next.delete('type')
+      next.delete('stat')
+    }
+    // Match Winners has no stat breakdown — clear stat when switching to it
+    if (key === 'type' && value === 'match_winner') {
+      next.delete('stat')
     }
     router.push(`/feed?${next.toString()}`)
   }
@@ -67,8 +77,8 @@ export default function FeedFilter({ availableStats = [] }: Props) {
         ))}
       </div>
 
-      {/* Stat filter — only shown when stat data is available */}
-      {availableStats.length > 0 && (
+      {/* Stat filter — only shown when a specific sport is selected and viewing props */}
+      {sport !== 'all' && availableStats.length > 0 && type !== 'match_winner' && (
         <div className="flex gap-2 overflow-x-auto scrollbar-hide">
           <button
             onClick={() => setFilter('stat', 'all')}
