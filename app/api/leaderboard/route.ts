@@ -37,11 +37,10 @@ export async function GET(req: NextRequest) {
   const { start, end } = getPeriodRange(period)
   const minPicks = MIN_PICKS[period] ?? 3
 
-  // Resolved questions in period (all sports first, for chip availability)
+  // Questions in period — no correct_option filter; pick.result is the source of truth for resolution
   const { data: allQs } = await db
     .from('questions')
     .select('id, sport')
-    .not('correct_option', 'is', null)
     .gte('closes_at', start)
     .lte('closes_at', end)
 
