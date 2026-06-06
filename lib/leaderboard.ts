@@ -1,9 +1,9 @@
 export const CURRENT_SEASON_START = '2025-10-01T00:00:00Z'
 
 export const MIN_PICKS: Record<string, number> = {
-  weekly: 3,
-  season: 15,
-  alltime: 25,
+  weekly: 1,
+  season: 3,
+  alltime: 5,
 }
 
 export const PERIOD_LABELS: Record<string, string> = {
