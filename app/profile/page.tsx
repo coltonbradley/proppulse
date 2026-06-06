@@ -7,6 +7,7 @@ import SignOutButton from '@/components/SignOutButton'
 
 type PickRow = {
   id: string
+  question_id: string
   option_index: number
   community_pct_at_vote: number | null
   picked_at: string
@@ -31,6 +32,7 @@ export default async function ProfilePage() {
       .from('picks')
       .select(`
         id,
+        question_id,
         option_index,
         community_pct_at_vote,
         picked_at,
@@ -46,6 +48,32 @@ export default async function ProfilePage() {
   const profile = rawProfile as { username: string; avatar_url: string | null } | null
   const picks = (rawPicks ?? []) as unknown as PickRow[]
 
+  // Beat-the-herd: won picks where user voted against the majority consensus
+  const winningPicks = picks.filter(p => p.result === 'win')
+  let againstHerd = 0
+  if (winningPicks.length > 0) {
+    const qIds = winningPicks.map(p => p.question_id)
+    const { data: consRows } = await supabase
+      .from('consensus')
+      .select('question_id, option_index, vote_count')
+      .in('question_id', qIds)
+
+    const majorityByQ = new Map<string, number>()
+    const byQ: Record<string, { option_index: number; vote_count: number }[]> = {}
+    for (const c of (consRows ?? []) as { question_id: string; option_index: number; vote_count: number }[]) {
+      if (!byQ[c.question_id]) byQ[c.question_id] = []
+      byQ[c.question_id].push(c)
+    }
+    for (const [qId, opts] of Object.entries(byQ)) {
+      majorityByQ.set(qId, opts.reduce((a, b) => a.vote_count >= b.vote_count ? a : b).option_index)
+    }
+
+    for (const pick of winningPicks) {
+      const majority = majorityByQ.get(pick.question_id)
+      if (majority !== undefined && pick.option_index !== majority) againstHerd++
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
       <header className="sticky top-0 z-10 bg-[#0f0f0f]/95 backdrop-blur border-b border-gray-800 px-4 py-3">
@@ -59,7 +87,7 @@ export default async function ProfilePage() {
       </header>
 
       <main className="max-w-xl mx-auto px-4 py-6 pb-24 space-y-6">
-        {stats && <ProfileStats stats={stats} />}
+        {stats && <ProfileStats stats={stats} againstHerd={againstHerd} />}
         <PicksSection picks={picks} />
       </main>
 

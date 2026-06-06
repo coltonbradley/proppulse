@@ -8,9 +8,9 @@ type UserStats = {
   sport_breakdown: Record<string, { total: number; correct: number }>
 }
 
-type Props = { stats: UserStats }
+type Props = { stats: UserStats; againstHerd: number }
 
-export default function ProfileStats({ stats }: Props) {
+export default function ProfileStats({ stats, againstHerd }: Props) {
   const vsPositive = stats.vs_community_pct > 0
   const vsNeutral = stats.vs_community_pct === 0
 
@@ -37,14 +37,17 @@ export default function ProfileStats({ stats }: Props) {
       </div>
 
       {/* Supporting stats grid */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {[
-          { label: 'Accuracy', value: `${stats.accuracy_pct}%` },
-          { label: 'Correct', value: `${stats.correct_picks}/${stats.total_picks}` },
+          { label: 'Accuracy', value: `${stats.accuracy_pct}%`, sub: null },
+          { label: 'Correct', value: `${stats.correct_picks}/${stats.total_picks}`, sub: null },
           { label: 'Streak', value: stats.current_streak, sub: `best ${stats.longest_streak}` },
+          { label: 'Beat the Herd', value: againstHerd, sub: againstHerd === 1 ? 'time' : 'times', highlight: againstHerd > 0 },
         ].map((s) => (
           <div key={s.label} className="bg-gray-900 rounded-xl p-3 text-center">
-            <p className="text-xl font-bold text-white">{s.value}</p>
+            <p className={`text-xl font-bold ${'highlight' in s && s.highlight ? 'text-teal-400' : 'text-white'}`}>
+              {s.value}
+            </p>
             <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
             {s.sub && <p className="text-xs text-gray-600 mt-0.5">{s.sub}</p>}
           </div>
