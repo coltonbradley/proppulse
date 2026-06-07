@@ -123,6 +123,21 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
   async function handleVote(optionIndex: number) {
     if (hasVoted || !isOpen || isVoting) return
     setError(null)
+
+    // Optimistic update: show consensus immediately, revert on failure
+    const prevChosen = chosenIndex
+    const prevConsensus = localConsensus
+    setChosenIndex(optionIndex)
+    const totalNow = localConsensus.reduce((s, c) => s + c.vote_count, 0)
+    const newTotal = totalNow + 1
+    setLocalConsensus(
+      question.options.map((_, i) => {
+        const existing = localConsensus.find((c) => c.option_index === i) ?? { option_index: i, vote_count: 0, pct: 0 }
+        const newCount = existing.vote_count + (i === optionIndex ? 1 : 0)
+        return { option_index: i, vote_count: newCount, pct: Math.round((newCount / newTotal) * 100) }
+      })
+    )
+
     setIsVoting(true)
     try {
       if (!userId) {
@@ -131,6 +146,7 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
           p_question_id: question.id,
           p_option_index: optionIndex,
         })
+        // Replace optimistic consensus with real server data if available
         if (data) setLocalConsensus(data as ConsensusRow[])
         onAnonVote(question.id, optionIndex)
         setShowNudge(true)
@@ -153,10 +169,12 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
           if (cons) setLocalConsensus(cons as ConsensusRow[])
           return
         }
+        // Revert on error
+        setChosenIndex(prevChosen)
+        setLocalConsensus(prevConsensus)
         setError(rpcError.message)
         return
       }
-      setChosenIndex(optionIndex)
       if (data) setLocalConsensus(data as ConsensusRow[])
     } finally {
       setIsVoting(false)
