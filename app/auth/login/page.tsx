@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import HerdLogo from '@/components/HerdLogo'
 
 export default function LoginPage() {
-  const supabase = createClient()
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -12,6 +12,7 @@ export default function LoginPage() {
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
+    const supabase = createClient()
     await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: `${location.origin}/auth/callback` },
@@ -21,6 +22,7 @@ export default function LoginPage() {
   }
 
   async function handleGoogle() {
+    const supabase = createClient()
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${location.origin}/auth/callback` },
@@ -30,7 +32,8 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
-        <div className="text-center">
+        <div className="text-center flex flex-col items-center gap-3">
+          <HerdLogo size={64} />
           <h1 className="text-3xl font-bold text-[#D85A30]">HerdPicks</h1>
           <p className="text-gray-400 mt-1 text-sm">Vote on props. See what the herd thinks.</p>
         </div>

@@ -6,6 +6,7 @@ import ProfileStats from '@/components/ProfileStats'
 import PicksSection from '@/components/PicksSection'
 import BottomNav from '@/components/BottomNav'
 import SignOutButton from '@/components/SignOutButton'
+import HerdLogo from '@/components/HerdLogo'
 
 type PickRow = {
   id: string
@@ -81,7 +82,10 @@ export default async function ProfilePage() {
     <div className="min-h-screen bg-[#0f0f0f]">
       <header className="sticky top-0 z-10 bg-[#0f0f0f]/95 backdrop-blur border-b border-gray-800 px-4 py-3">
         <div className="max-w-xl mx-auto flex items-center justify-between">
-          <span className="text-lg font-bold text-[#D85A30]">HerdPicks</span>
+          <div className="flex items-center gap-2">
+              <HerdLogo size={30} />
+              <span className="text-lg font-bold text-[#D85A30]">HerdPicks</span>
+            </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-400">{profile?.username}</span>
             <SignOutButton />

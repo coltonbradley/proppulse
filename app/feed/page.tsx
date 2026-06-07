@@ -5,6 +5,7 @@ import TrendingRail from '@/components/TrendingRail'
 import BottomNav from '@/components/BottomNav'
 import FeedClient from './FeedClient'
 import HerdAccuracyChip from '@/components/HerdAccuracyChip'
+import HerdLogo from '@/components/HerdLogo'
 
 type ConsensusRow = { option_index: number; vote_count: number; pct: number }
 type QuestionRow = {
@@ -153,7 +154,10 @@ export default async function FeedPage({ searchParams }: Props) {
     <div className="min-h-screen bg-[#0f0f0f]">
       <header className="sticky top-0 z-10 bg-[#0f0f0f]/95 backdrop-blur border-b border-gray-800 px-4 py-3">
         <div className="max-w-xl mx-auto flex items-center justify-between">
-          <span className="text-lg font-bold text-[#D85A30]">HerdPicks</span>
+          <div className="flex items-center gap-2">
+            <HerdLogo size={30} />
+            <span className="text-lg font-bold text-[#D85A30]">HerdPicks</span>
+          </div>
           {!user && (
             <a href="/auth/login" className="text-sm text-[#D85A30] font-medium">Sign in</a>
           )}
