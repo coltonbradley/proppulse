@@ -409,57 +409,54 @@ export async function POST(req: Request) {
   const processSoccer = !internalSportFilter || internalSportFilter === 'soccer'
 
   if (processSoccer) {
+    // Step 1: Collect all Odds API events across all soccer sport keys
+    const allSoccerEvents: Array<OddsApiGame & { apiSport: string }> = []
     for (const apiSport of soccerKeys) {
-      let games
       try {
-        // Use free-tier /events endpoint — /odds requires a paid plan
-        games = await fetchSoccerEvents(apiSport)
+        const events = await fetchSoccerEvents(apiSport)
+        for (const e of events) allSoccerEvents.push({ ...e, apiSport })
       } catch (err) {
         apiErrors[apiSport] = err instanceof Error ? err.message : String(err)
-        continue
       }
+    }
 
-      for (const rawGame of games) {
-        const game = { ...rawGame, home_team: normalizeTeam(rawGame.home_team), away_team: normalizeTeam(rawGame.away_team) }
-        const gameDate = game.commence_time.slice(0, 10)
-        const dateGte = `${gameDate}T00:00:00Z`
-        const dateLt  = `${gameDate}T23:59:59Z`
+    // Step 2: Delete stale soccer games not from current Odds API events.
+    // PP-sourced games had wrong team pairings (daily-slate IDs grouped all same-day matches).
+    // Only delete if no picks are attached so no user data is lost.
+    const validOddsIds = new Set(allSoccerEvents.map(e => e.id))
+    const { data: allSoccerGames } = await supabase
+      .from('games').select('id, external_id').eq('sport', 'soccer')
 
-        // Check for existing game with correct home/away ordering
-        const { data: existingCorrect } = await supabase
-          .from('games').select('id')
-          .eq('sport', 'soccer').eq('home_team', game.home_team).eq('away_team', game.away_team)
-          .gte('starts_at', dateGte).lt('starts_at', dateLt).neq('external_id', game.id).single()
-
-        if (existingCorrect) continue
-
-        // Check for existing game with teams swapped (PP inserted them in wrong order) — fix in place
-        const { data: existingSwapped } = await supabase
-          .from('games').select('id')
-          .eq('sport', 'soccer').eq('home_team', game.away_team).eq('away_team', game.home_team)
-          .gte('starts_at', dateGte).lt('starts_at', dateLt).neq('external_id', game.id).single()
-
-        if (existingSwapped) {
-          await supabase.from('games')
-            .update({ home_team: game.home_team, away_team: game.away_team })
-            .eq('id', (existingSwapped as { id: string }).id)
-          continue
-        }
-
-        const { data: gameRow, error: gameErr } = await supabase
-          .from('games')
-          .upsert(
-            { external_id: game.id, sport: 'soccer', home_team: game.home_team, away_team: game.away_team, starts_at: game.commence_time, status: 'scheduled' },
-            { onConflict: 'external_id' }
-          )
-          .select('id')
-          .single()
-
-        if (gameErr || !gameRow) continue
-        results.games++
-        // Use PP-based props (free); Odds API player props endpoint is paid-only
-        results.questions += await seedPlayerProps(supabase, apiSport as OddsApiSportKey, game, gameRow.id, 'soccer', ppLines)
+    for (const oldGame of allSoccerGames ?? []) {
+      const g = oldGame as { id: string; external_id: string }
+      if (validOddsIds.has(g.external_id)) continue
+      const { data: qs } = await supabase.from('questions').select('id').eq('game_id', g.id)
+      const qIds = (qs ?? []).map((q: { id: string }) => q.id)
+      if (qIds.length) {
+        const { data: picks } = await supabase.from('picks').select('question_id').in('question_id', qIds).limit(1)
+        if (picks?.length) continue
+        await supabase.from('questions').delete().in('id', qIds)
       }
+      await supabase.from('games').delete().eq('id', g.id)
+    }
+
+    // Step 3: Upsert Odds API games and seed props
+    for (const rawEvent of allSoccerEvents) {
+      const game = { ...rawEvent, home_team: normalizeTeam(rawEvent.home_team), away_team: normalizeTeam(rawEvent.away_team) }
+
+      const { data: gameRow, error: gameErr } = await supabase
+        .from('games')
+        .upsert(
+          { external_id: game.id, sport: 'soccer', home_team: game.home_team, away_team: game.away_team, starts_at: game.commence_time, status: 'scheduled' },
+          { onConflict: 'external_id' }
+        )
+        .select('id')
+        .single()
+
+      if (gameErr || !gameRow) continue
+      results.games++
+      // Use PP-based props (free); Odds API player props endpoint is paid-only
+      results.questions += await seedPlayerProps(supabase, game.apiSport as OddsApiSportKey, game, gameRow.id, 'soccer', ppLines)
     }
   }
 
