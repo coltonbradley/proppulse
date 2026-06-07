@@ -189,7 +189,7 @@ export async function fetchEspnGamesForDate(sport: string, dateStr: string): Pro
 }
 
 // Parses soccer-specific roster structure: rosters[].roster[].stats[] with {name, value} objects
-function parseSoccerStats(
+export function parseSoccerStats(
   data: unknown,
   statMappings: StatMapping[]
 ): EspnPlayerStat[] {
@@ -274,6 +274,75 @@ export async function fetchEspnPlayerStats(sport: string, espnEventId: string): 
   }
 
   return parseBoxscoreStats(data, statMappings)
+}
+
+// Fetches cumulative player stats across all completed FIFA World Cup games.
+// Iterates each date from tournament start to today, collects completed event IDs,
+// then fetches per-game stats and sums them per player.
+// Called by the tournament resolver once closes_at has passed (after the final).
+export async function fetchEspnTournamentCumulativeStats(): Promise<EspnPlayerStat[]> {
+  const config = ESPN_CONFIGS.soccer
+  const statMappings = ESPN_STAT_KEYS.soccer ?? []
+  if (!config || !statMappings.length) return []
+
+  // Collect all dates from World Cup start (June 11) through today
+  const dates: string[] = []
+  const start = new Date('2026-06-11')
+  const today = new Date()
+  for (const d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10).replace(/-/g, ''))
+  }
+
+  // Batch scoreboard fetches to find completed event IDs
+  const completedIds = new Set<string>()
+  const BATCH = 6
+  for (let i = 0; i < dates.length; i += BATCH) {
+    const batch = dates.slice(i, i + BATCH)
+    const boards = await Promise.all(
+      batch.map(ds => safeFetch(
+        `https://site.api.espn.com/apis/site/v2/sports/${config.sport}/${config.league}/scoreboard?dates=${ds}`
+      ))
+    )
+    for (const data of boards) {
+      const d = data as { events?: Record<string, unknown>[] } | null
+      for (const event of d?.events ?? []) {
+        const competition = (event.competitions as Record<string, unknown>[])?.[0]
+        const completed = ((competition?.status as Record<string, unknown>)?.type as Record<string, unknown>)?.completed
+        if (completed) completedIds.add(event.id as string)
+      }
+    }
+  }
+
+  // Fetch per-game stats for every completed event and merge into cumulative totals
+  const totals = new Map<string, Map<string, number>>()
+  const eventList = Array.from(completedIds)
+  for (let i = 0; i < eventList.length; i += BATCH) {
+    const batch = eventList.slice(i, i + BATCH)
+    const gameStats = await Promise.all(
+      batch.map(async id => {
+        const data = await safeFetch(
+          `https://site.api.espn.com/apis/site/v2/sports/${config.sport}/${config.league}/summary?event=${id}`
+        )
+        return parseSoccerStats(data, statMappings)
+      })
+    )
+    for (const stats of gameStats) {
+      for (const { playerName, statLabel, value } of stats) {
+        if (!totals.has(playerName)) totals.set(playerName, new Map())
+        const m = totals.get(playerName)!
+        m.set(statLabel, (m.get(statLabel) ?? 0) + value)
+      }
+    }
+  }
+
+  // Flatten to EspnPlayerStat[]
+  const result: EspnPlayerStat[] = []
+  for (const [playerName, statsMap] of totals) {
+    for (const [statLabel, value] of statsMap) {
+      result.push({ playerName, statLabel, value })
+    }
+  }
+  return result
 }
 
 export function resolvePlayerProp(

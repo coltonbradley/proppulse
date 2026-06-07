@@ -296,6 +296,10 @@ export async function POST(req: Request) {
       byTeam.get(team)!.push(line)
     }
 
+    // Tournament props close after the World Cup final (July 19 2026).
+    // All team stats accumulate through the tournament, so we can't resolve early.
+    const tournamentEnds = '2026-07-20T00:00:00Z'
+
     for (const [team, teamLines] of byTeam) {
       const startsAt = teamLines.find(l => l.gameStartsAt)?.gameStartsAt
         ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -335,7 +339,7 @@ export async function POST(req: Request) {
       for (const ppLine of teamLines) {
         const questionText = `${ppLine.playerName} ${ppLine.statLabel} — over or under ${ppLine.line}?`
         const { error } = await supabase.from('questions').upsert(
-          { game_id: tGameRowId, sport: 'soccer_tournament', question_type: 'player_prop', stat: ppLine.statLabel, question_text: questionText, options: [{ label: `Over ${ppLine.line}` }, { label: `Under ${ppLine.line}` }], closes_at: startsAt, status: 'open' },
+          { game_id: tGameRowId, sport: 'soccer_tournament', question_type: 'player_prop', stat: ppLine.statLabel, question_text: questionText, options: [{ label: `Over ${ppLine.line}` }, { label: `Under ${ppLine.line}` }], closes_at: tournamentEnds, status: 'open' },
           { onConflict: 'game_id,question_type,question_text', ignoreDuplicates: true }
         )
         if (!error) results.questions++
@@ -392,7 +396,7 @@ export async function POST(req: Request) {
 
   // ── Soccer: still uses The Odds API for game discovery + props ────────────
   const soccerKeys = ALL_ODDS_API_KEYS.filter(k => ODDS_API_TO_SPORT[k] === 'soccer')
-  const processSoccer = !sportFilter || ODDS_API_TO_SPORT[sportFilter] === 'soccer'
+  const processSoccer = !internalSportFilter || internalSportFilter === 'soccer'
 
   if (processSoccer) {
     for (const apiSport of soccerKeys) {
@@ -407,18 +411,29 @@ export async function POST(req: Request) {
       for (const rawGame of games) {
         const game = { ...rawGame, home_team: normalizeTeam(rawGame.home_team), away_team: normalizeTeam(rawGame.away_team) }
         const gameDate = game.commence_time.slice(0, 10)
-        const { data: existing } = await supabase
-          .from('games')
-          .select('id')
-          .eq('sport', 'soccer')
-          .eq('home_team', game.home_team)
-          .eq('away_team', game.away_team)
-          .gte('starts_at', `${gameDate}T00:00:00Z`)
-          .lt('starts_at', `${gameDate}T23:59:59Z`)
-          .neq('external_id', game.id)
-          .single()
+        const dateGte = `${gameDate}T00:00:00Z`
+        const dateLt  = `${gameDate}T23:59:59Z`
 
-        if (existing) continue
+        // Check for existing game with correct home/away ordering
+        const { data: existingCorrect } = await supabase
+          .from('games').select('id')
+          .eq('sport', 'soccer').eq('home_team', game.home_team).eq('away_team', game.away_team)
+          .gte('starts_at', dateGte).lt('starts_at', dateLt).neq('external_id', game.id).single()
+
+        if (existingCorrect) continue
+
+        // Check for existing game with teams swapped (PP inserted them in wrong order) — fix in place
+        const { data: existingSwapped } = await supabase
+          .from('games').select('id')
+          .eq('sport', 'soccer').eq('home_team', game.away_team).eq('away_team', game.home_team)
+          .gte('starts_at', dateGte).lt('starts_at', dateLt).neq('external_id', game.id).single()
+
+        if (existingSwapped) {
+          await supabase.from('games')
+            .update({ home_team: game.home_team, away_team: game.away_team })
+            .eq('id', (existingSwapped as { id: string }).id)
+          continue
+        }
 
         const { data: gameRow, error: gameErr } = await supabase
           .from('games')

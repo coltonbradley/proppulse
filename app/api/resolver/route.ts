@@ -4,6 +4,7 @@ import { ALL_ODDS_API_KEYS } from '@/lib/sports.config'
 import {
   fetchEspnGamesForDate,
   fetchEspnPlayerStats,
+  fetchEspnTournamentCumulativeStats,
   resolvePlayerProp,
   extractPlayerName,
   extractStatFromQuestion,
@@ -290,6 +291,18 @@ async function recomputeUserStats(
   }
 }
 
+async function recomputeAllUsers() {
+  const supabase = getServiceClient()
+  const { data: rows } = await supabase
+    .from('picks')
+    .select('user_id')
+    .in('result', ['win', 'loss'])
+  const userIds = [...new Set((rows ?? []).map((r: { user_id: string }) => r.user_id))]
+  if (!userIds.length) return NextResponse.json({ usersUpdated: 0 })
+  await recomputeUserStats(supabase, userIds)
+  return NextResponse.json({ usersUpdated: userIds.length })
+}
+
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   const bearer = req.headers.get('authorization')
@@ -297,7 +310,9 @@ export async function GET(req: NextRequest) {
   if (bearer !== `Bearer ${cronSecret}` && manual !== cronSecret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const debug = new URL(req.url).searchParams.get('debug') === '1'
+  const params = new URL(req.url).searchParams
+  const debug = params.get('debug') === '1'
+  if (params.get('recompute_all') === '1') return recomputeAllUsers()
   return runResolver(debug)
 }
 
@@ -404,6 +419,7 @@ async function runResolver(debug = false) {
     `)
     .eq('status', 'open')
     .eq('question_type', 'player_prop')
+    .neq('sport', 'soccer_tournament')
     .is('correct_option', null)
     .lt('closes_at', new Date().toISOString())
 
@@ -418,6 +434,50 @@ async function runResolver(debug = false) {
       .ilike('question_text', '%Alvarado%')
       .limit(10)
     debugLog.push(`openProps_count=${openProps?.length ?? 0} now=${new Date().toISOString()} alvarado_nba=${nbaProps?.map(p=>p.question_text.slice(0,30)+'@'+p.closes_at).join('|')}`)
+  }
+
+  // === Soccer Tournament Resolution (cumulative stats, resolved after the final) ===
+  // soccer_tournament props have closes_at = 2026-07-20 and span the whole tournament.
+  // They're excluded from the per-game resolver below and handled here instead.
+  const { data: openTourneyProps } = await supabase
+    .from('questions')
+    .select('id, question_text, stat, options, sport')
+    .eq('status', 'open')
+    .eq('question_type', 'player_prop')
+    .eq('sport', 'soccer_tournament')
+    .is('correct_option', null)
+    .lt('closes_at', new Date().toISOString())
+
+  if (openTourneyProps?.length) {
+    const cumulativeStats = await fetchEspnTournamentCumulativeStats()
+    if (cumulativeStats.length) {
+      type TourneyProp = { id: string; question_text: string; stat: string | null; options: { label: string }[]; sport: string }
+      for (const prop of openTourneyProps as unknown as TourneyProp[]) {
+        const playerName = extractPlayerName(prop.question_text, prop.stat)
+        const lineRaw = prop.options[0]?.label.replace(/^Over\s*/i, '') ?? ''
+        const line = parseFloat(lineRaw)
+        if (!playerName || isNaN(line)) { results.skipped++; continue }
+
+        const statLabel = prop.stat ?? extractStatFromQuestion(prop.question_text)
+        const correctOption = resolvePlayerProp(playerName, statLabel, line, cumulativeStats)
+        if (correctOption === null) { results.skipped++; continue }
+
+        if (correctOption === 'push') {
+          await supabase.from('questions').update({ status: 'resolved' }).eq('id', prop.id)
+          const { data: pushPicks } = await supabase.from('picks').update({ result: 'push' }).eq('question_id', prop.id).select('user_id')
+          for (const p of pushPicks ?? []) affectedUsers.add((p as { user_id: string }).user_id)
+          results.resolved++
+          continue
+        }
+
+        await supabase.from('questions').update({ correct_option: correctOption, status: 'resolved' }).eq('id', prop.id)
+        const { data: wP } = await supabase.from('picks').update({ result: 'win' }).eq('question_id', prop.id).eq('option_index', correctOption).select('user_id')
+        const { data: lP } = await supabase.from('picks').update({ result: 'loss' }).eq('question_id', prop.id).neq('option_index', correctOption).select('user_id')
+        for (const p of [...(wP ?? []), ...(lP ?? [])]) affectedUsers.add((p as { user_id: string }).user_id)
+        await insertConsensusResult(supabase, prop.id, correctOption, prop.sport, prop.stat ?? 'player_prop')
+        results.resolved++
+      }
+    }
   }
 
   if (openProps?.length) {
@@ -532,8 +592,13 @@ async function runResolver(debug = false) {
     }
   }
 
-  if (affectedUsers.size) {
-    await recomputeUserStats(supabase, Array.from(affectedUsers))
+  const { data: allPickRows } = await supabase
+    .from('picks')
+    .select('user_id')
+    .in('result', ['win', 'loss'])
+  const allUserIds = [...new Set((allPickRows ?? []).map((r: { user_id: string }) => r.user_id))]
+  if (allUserIds.length) {
+    await recomputeUserStats(supabase, allUserIds)
   }
 
   const out: Record<string, unknown> = { ...results, usersUpdated: affectedUsers.size }
