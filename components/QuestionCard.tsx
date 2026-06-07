@@ -154,10 +154,21 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: rpcError } = await (supabase as any).rpc('cast_vote', {
+      let { data, error: rpcError } = await (supabase as any).rpc('cast_vote', {
         p_question_id: question.id,
         p_option_index: optionIndex,
       })
+      // Retry once on network errors (no code = fetch-level failure, not a DB exception)
+      if (rpcError && !rpcError.code) {
+        await new Promise((r) => setTimeout(r, 1200))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const retry = await (supabase as any).rpc('cast_vote', {
+          p_question_id: question.id,
+          p_option_index: optionIndex,
+        })
+        data = retry.data
+        rpcError = retry.error
+      }
       if (rpcError) {
         if (rpcError.code === '23505') {
           // Already voted — recover silently by loading their existing pick + current consensus
@@ -172,7 +183,7 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
         // Revert on error
         setChosenIndex(prevChosen)
         setLocalConsensus(prevConsensus)
-        setError(rpcError.message)
+        setError('Vote failed — check your connection and try again.')
         return
       }
       if (data) setLocalConsensus(data as ConsensusRow[])
