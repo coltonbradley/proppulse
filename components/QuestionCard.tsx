@@ -153,25 +153,35 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
         return
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let { data, error: rpcError } = await (supabase as any).rpc('cast_vote', {
-        p_question_id: question.id,
-        p_option_index: optionIndex,
-      })
-      // Retry once on network errors (no code = fetch-level failure, not a DB exception)
-      if (rpcError && !rpcError.code) {
-        await new Promise((r) => setTimeout(r, 1200))
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const retry = await (supabase as any).rpc('cast_vote', {
-          p_question_id: question.id,
-          p_option_index: optionIndex,
+      // Route through Next.js API (same-origin) — avoids cross-origin Supabase fetch failures
+      let res: Response
+      try {
+        res = await fetch('/api/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question_id: question.id, option_index: optionIndex }),
         })
-        data = retry.data
-        rpcError = retry.error
+      } catch {
+        // Network error — retry once after short delay
+        await new Promise((r) => setTimeout(r, 1200))
+        try {
+          res = await fetch('/api/vote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question_id: question.id, option_index: optionIndex }),
+          })
+        } catch {
+          setChosenIndex(prevChosen)
+          setLocalConsensus(prevConsensus)
+          setError('Vote failed — check your connection and try again.')
+          return
+        }
       }
-      if (rpcError) {
-        if (rpcError.code === '23505') {
-          // Already voted — recover silently by loading their existing pick + current consensus
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string; code?: string }
+        if (res.status === 409 || body.code === '23505') {
+          // Already voted — recover silently
           const [{ data: pick }, { data: cons }] = await Promise.all([
             supabase.from('picks').select('option_index').eq('question_id', question.id).eq('user_id', userId!).single(),
             supabase.from('consensus').select('option_index, vote_count, pct').eq('question_id', question.id),
@@ -180,13 +190,14 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
           if (cons) setLocalConsensus(cons as ConsensusRow[])
           return
         }
-        // Revert on error
         setChosenIndex(prevChosen)
         setLocalConsensus(prevConsensus)
         setError('Vote failed — check your connection and try again.')
         return
       }
-      if (data) setLocalConsensus(data as ConsensusRow[])
+
+      const body = await res.json() as { consensus?: ConsensusRow[] }
+      if (body.consensus) setLocalConsensus(body.consensus)
     } finally {
       setIsVoting(false)
     }
