@@ -264,7 +264,10 @@ export async function POST(req: Request) {
   // Group PP lines by pp_game_id to find unique upcoming games.
   // Both teams' players appear under the same pp_game_id, so we can recover
   // both team names without any abbreviation lookup table.
-  const usSports = ['nba', 'nfl', 'mlb', 'nhl', 'soccer']
+  // Soccer is intentionally excluded here — PrizePicks uses daily-slate game IDs
+  // that span all World Cup matches on the same day, so team pairings from PP are
+  // unreliable. Soccer game discovery happens via the Odds API block below.
+  const usSports = ['nba', 'nfl', 'mlb', 'nhl']
   const sportsToProcess = sportFilter
     ? [ODDS_API_TO_SPORT[sportFilter]].filter(Boolean)
     : usSports
