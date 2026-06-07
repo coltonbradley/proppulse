@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getStatConfig, STAT_PILL_DEFAULT } from '@/lib/stat-config'
 
@@ -67,7 +67,7 @@ function parsePlayerProp(questionText: string, options: { label: string }[]) {
   const words = nameAndStat.split(' ')
   let splitIdx = words.length
   for (let i = 1; i < words.length; i++) {
-    if (words[i] && /^[a-z]/.test(words[i])) { splitIdx = i; break }
+    if (words[i] && (/^[a-z]/.test(words[i]) || words[i].includes('+'))) { splitIdx = i; break }
   }
 
   const playerName = words.slice(0, splitIdx).join(' ')
@@ -79,11 +79,18 @@ function parsePlayerProp(questionText: string, options: { label: string }[]) {
 
 export default function QuestionCard({ question, userId, anonPick, onAnonVote }: Props) {
   const supabase = createClient()
-  const [isPending, startTransition] = useTransition()
+  const [isVoting, setIsVoting] = useState(false)
   const [localConsensus, setLocalConsensus] = useState<ConsensusRow[]>(question.consensus)
   const [chosenIndex, setChosenIndex] = useState<number | null>(question.userPick)
   const [showNudge, setShowNudge] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Sync when parent updates userPick after the client-side pick fetch
+  useEffect(() => {
+    if (question.userPick !== null && chosenIndex === null) {
+      setChosenIndex(question.userPick)
+    }
+  }, [question.userPick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const effectivePick = chosenIndex ?? anonPick
   const hasVoted = effectivePick !== null
@@ -113,12 +120,12 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
   const awayTeam = matchupMatch?.[1] ?? ''
   const homeTeam = matchupMatch?.[2] ?? ''
 
-  function handleVote(optionIndex: number) {
-    if (hasVoted || !isOpen || isPending) return
+  async function handleVote(optionIndex: number) {
+    if (hasVoted || !isOpen || isVoting) return
     setError(null)
-
-    if (!userId) {
-      startTransition(async () => {
+    setIsVoting(true)
+    try {
+      if (!userId) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data } = await (supabase as any).rpc('cast_anon_vote', {
           p_question_id: question.id,
@@ -127,20 +134,33 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
         if (data) setLocalConsensus(data as ConsensusRow[])
         onAnonVote(question.id, optionIndex)
         setShowNudge(true)
-      })
-      return
-    }
+        return
+      }
 
-    startTransition(async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error: rpcError } = await (supabase as any).rpc('cast_vote', {
         p_question_id: question.id,
         p_option_index: optionIndex,
       })
-      if (rpcError) { setError(rpcError.message); return }
+      if (rpcError) {
+        if (rpcError.code === '23505') {
+          // Already voted — recover silently by loading their existing pick + current consensus
+          const [{ data: pick }, { data: cons }] = await Promise.all([
+            supabase.from('picks').select('option_index').eq('question_id', question.id).eq('user_id', userId!).single(),
+            supabase.from('consensus').select('option_index, vote_count, pct').eq('question_id', question.id),
+          ])
+          if (pick) setChosenIndex((pick as { option_index: number }).option_index)
+          if (cons) setLocalConsensus(cons as ConsensusRow[])
+          return
+        }
+        setError(rpcError.message)
+        return
+      }
       setChosenIndex(optionIndex)
       if (data) setLocalConsensus(data as ConsensusRow[])
-    })
+    } finally {
+      setIsVoting(false)
+    }
   }
 
   const totalVotes = localConsensus.reduce((sum, c) => sum + c.vote_count, 0)
@@ -224,7 +244,7 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
               <button
                 key={i}
                 onClick={() => handleVote(i)}
-                disabled={isPending}
+                disabled={isVoting}
                 className="w-full py-2 rounded-xl text-xs font-bold
                            bg-gray-800 text-gray-200 border border-gray-700
                            hover:bg-amber-500/20 hover:text-amber-300 hover:border-amber-500/40
@@ -238,7 +258,7 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
         <div className="flex gap-2">
           <button
             onClick={() => handleVote(0)}
-            disabled={isPending}
+            disabled={isVoting}
             className="flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide
                        bg-[#D85A30]/10 text-[#D85A30] border border-[#D85A30]/30
                        hover:bg-[#D85A30] hover:text-white hover:border-[#D85A30]
@@ -248,7 +268,7 @@ export default function QuestionCard({ question, userId, anonPick, onAnonVote }:
           </button>
           <button
             onClick={() => handleVote(1)}
-            disabled={isPending}
+            disabled={isVoting}
             className="flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide
                        bg-[#185FA5]/10 text-[#185FA5] border border-[#185FA5]/30
                        hover:bg-[#185FA5] hover:text-white hover:border-[#185FA5]
