@@ -114,6 +114,18 @@ function transformParlayProps(rows: ParlayPropRow[]) {
   return { bookmakers: [{ key: rows[0].bookmaker, markets }] }
 }
 
+// Uses the free-tier /events endpoint (no bookmaker odds) for game discovery.
+// Required for soccer because /odds requires a paid Odds API plan.
+export async function fetchSoccerEvents(apiSportKey: string): Promise<OddsApiGame[]> {
+  const res = await fetch(
+    `${ODDS_API_BASE}/sports/${apiSportKey}/events?apiKey=${process.env.ODDS_API_KEY}`,
+    { cache: 'no-store' }
+  )
+  if (!res.ok) throw new Error(`Odds API error: ${res.status}`)
+  const events = await res.json() as { id: string; home_team: string; away_team: string; commence_time: string }[]
+  return events.map(e => ({ id: e.id, sport_key: apiSportKey, home_team: e.home_team, away_team: e.away_team, commence_time: e.commence_time, bookmakers: [] }))
+}
+
 export async function fetchGames(apiSportKey: string) {
   const config = getConfigForApiKey(apiSportKey)
   const regions = config?.oddsRegions ?? 'us,ca'

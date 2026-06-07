@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { fetchGames, fetchPlayerProps, type OddsApiGame, type OddsApiSportKey } from '@/lib/odds-api'
+import { fetchGames, fetchSoccerEvents, fetchPlayerProps, type OddsApiGame, type OddsApiSportKey } from '@/lib/odds-api'
 import { SPORT_BY_KEY } from '@/lib/sports.config'
 import { ALL_ODDS_API_KEYS, ODDS_API_TO_SPORT } from '@/lib/sports.config'
 import { fetchPrizePicksLines, type PPLine } from '@/lib/prizepicks'
@@ -18,6 +18,13 @@ const TEAM_NAME_MAP: Record<string, string> = {
   'S. Africa': 'South Africa',
   'N. Ireland': 'Northern Ireland',
   'Trinidad': 'Trinidad and Tobago',
+  // FIFA World Cup: Odds API → PrizePicks playerTeamFull
+  'USA': 'United States',
+  'Bosnia & Herzegovina': 'Bosnia and Herzegovina',
+  'Korea Republic': 'South Korea',
+  "Côte d'Ivoire": 'Ivory Coast',
+  'DR Congo': 'Congo DR',
+  'Curacao': 'Curaçao',
 }
 function normalizeTeam(name: string): string {
   return TEAM_NAME_MAP[name] ?? name
@@ -405,7 +412,8 @@ export async function POST(req: Request) {
     for (const apiSport of soccerKeys) {
       let games
       try {
-        games = await fetchGames(apiSport)
+        // Use free-tier /events endpoint — /odds requires a paid plan
+        games = await fetchSoccerEvents(apiSport)
       } catch (err) {
         apiErrors[apiSport] = err instanceof Error ? err.message : String(err)
         continue
@@ -449,8 +457,8 @@ export async function POST(req: Request) {
 
         if (gameErr || !gameRow) continue
         results.games++
-        results.questions += await seedGameLines(supabase, game, gameRow.id, 'soccer')
-        results.questions += await seedSoccerProps(supabase, apiSport, game, gameRow.id, ppLines)
+        // Use PP-based props (free); Odds API player props endpoint is paid-only
+        results.questions += await seedPlayerProps(supabase, apiSport as OddsApiSportKey, game, gameRow.id, 'soccer', ppLines)
       }
     }
   }
