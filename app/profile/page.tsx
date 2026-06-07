@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ProfileStats from '@/components/ProfileStats'
@@ -47,6 +49,7 @@ export default async function ProfilePage() {
 
   const profile = rawProfile as { username: string; avatar_url: string | null } | null
   const picks = (rawPicks ?? []) as unknown as PickRow[]
+  const pushedCount = picks.filter((p) => p.result === 'push').length
 
   // Beat-the-herd: won picks where user voted against the majority consensus
   const winningPicks = picks.filter(p => p.result === 'win')
@@ -87,7 +90,7 @@ export default async function ProfilePage() {
       </header>
 
       <main className="max-w-xl mx-auto px-4 py-6 pb-24 space-y-6">
-        {stats && <ProfileStats stats={stats} againstHerd={againstHerd} />}
+        {stats && <ProfileStats stats={stats} againstHerd={againstHerd} pushedCount={pushedCount} />}
         <PicksSection picks={picks} />
       </main>
 
